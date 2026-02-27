@@ -60,7 +60,10 @@ export class TasksDomain {
 		this.projectRoot = configManager.getProjectRoot();
 		this.configManager = configManager;
 		this.taskService = new TaskService(configManager);
-		this.executionService = new TaskExecutionService(this.taskService);
+		this.executionService = new TaskExecutionService(
+			this.taskService,
+			this.projectRoot
+		);
 		this.loaderService = new TaskLoaderService(this.taskService);
 		this.preflightChecker = new PreflightChecker(this.projectRoot);
 		this.briefsDomain = new BriefsDomain();

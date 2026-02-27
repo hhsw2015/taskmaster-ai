@@ -6,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getLogger } from '../../../common/logger/index.js';
+import { runCodexExecutionPreflight } from '../../../common/utils/codex-execution-preflight.js';
 import { PRESETS, isPreset as checkIsPreset } from '../presets/index.js';
 import type {
 	LoopConfig,
@@ -149,6 +150,21 @@ export class LoopService {
 				finalStatus: 'error',
 				errorMessage: errorMsg
 			};
+		}
+
+		if (executor === 'codex') {
+			const preflight = runCodexExecutionPreflight(this.projectRoot);
+			if (!preflight.success) {
+				const errorMsg = this.formatCodexPreflightError(preflight.errors);
+				this.reportError(config.callbacks, errorMsg);
+				return {
+					iterations: [],
+					totalIterations: 0,
+					tasksCompleted: 0,
+					finalStatus: 'error',
+					errorMessage: errorMsg
+				};
+			}
 		}
 
 		this._isRunning = true;
@@ -757,6 +773,11 @@ Loop iteration ${iteration} of ${config.iterations}${tagInfo}`;
 			duration: Date.now() - startTime,
 			message
 		};
+	}
+
+	private formatCodexPreflightError(errors: string[]): string {
+		const lines = errors.map((error) => `- ${error}`).join('\n');
+		return `Codex execution blocked by permission preflight checks:\n${lines}`;
 	}
 
 	private handleStreamEvent(

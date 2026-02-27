@@ -4,6 +4,7 @@
  */
 
 import type { Task } from '../../../common/types/index.js';
+import { runCodexExecutionPreflight } from '../../../common/utils/codex-execution-preflight.js';
 import type { TaskService } from './task-service.js';
 
 export type TaskExecutor = 'claude' | 'codex';
@@ -43,7 +44,10 @@ export interface ConflictCheckResult {
  * TaskExecutionService handles the business logic for starting and executing tasks
  */
 export class TaskExecutionService {
-	constructor(private taskService: TaskService) {}
+	constructor(
+		private taskService: TaskService,
+		private projectRoot: string = process.cwd()
+	) {}
 
 	/**
 	 * Start working on a task with comprehensive business logic
@@ -86,6 +90,21 @@ export class TaskExecutionService {
 				subtask = task.subtasks.find((st) => String(st.id) === subtaskId);
 			}
 
+			const executor = this.normalizeExecutor(options.executor);
+			if (!options.dryRun && executor === 'codex') {
+				const preflight = runCodexExecutionPreflight(this.projectRoot);
+				if (!preflight.success) {
+					return {
+						task,
+						found: true,
+						started: false,
+						subtaskId,
+						subtask,
+						error: this.formatCodexPreflightError(preflight.errors)
+					};
+				}
+			}
+
 			// Update task status to in-progress if not disabled
 			if (options.updateStatus && !options.dryRun) {
 				try {
@@ -102,7 +121,6 @@ export class TaskExecutionService {
 			let started = false;
 			let executionOutput = 'Task ready to execute';
 			let command = undefined;
-			const executor = this.normalizeExecutor(options.executor);
 
 			if (!options.dryRun) {
 				// Prepare the command for execution by the CLI
@@ -136,6 +154,11 @@ export class TaskExecutionService {
 				error: error instanceof Error ? error.message : String(error)
 			};
 		}
+	}
+
+	private formatCodexPreflightError(errors: string[]): string {
+		const lines = errors.map((error) => `- ${error}`).join('\n');
+		return `Codex execution blocked by permission preflight checks:\n${lines}`;
 	}
 
 	/**
@@ -246,7 +269,7 @@ export class TaskExecutionService {
 			const taskPrompt = this.formatTaskPrompt(task, subtask);
 			const executable = executor;
 			const args = this.getExecutionArgs(executor, taskPrompt);
-			const cwd = process.cwd(); // or could get from project root
+			const cwd = this.projectRoot;
 
 			return { executable, args, cwd };
 		} catch (error) {

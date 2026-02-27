@@ -14,11 +14,20 @@ import {
 	it,
 	vi
 } from 'vitest';
+import { runCodexExecutionPreflight } from '../../../common/utils/codex-execution-preflight.js';
 import { LoopService, type LoopServiceOptions } from './loop.service.js';
 
 // Mock child_process and fs/promises
 vi.mock('node:child_process');
 vi.mock('node:fs/promises');
+vi.mock('../../../common/utils/codex-execution-preflight.js', () => ({
+	runCodexExecutionPreflight: vi.fn(() => ({
+		success: true,
+		errors: [],
+		projectRoot: '/test/project',
+		configPath: '/tmp/.codex/config.toml'
+	}))
+}));
 
 describe('LoopService', () => {
 	const defaultOptions: LoopServiceOptions = {
@@ -29,6 +38,12 @@ describe('LoopService', () => {
 
 	beforeEach(() => {
 		vi.resetAllMocks();
+		vi.mocked(runCodexExecutionPreflight).mockReturnValue({
+			success: true,
+			errors: [],
+			projectRoot: '/test/project',
+			configPath: '/tmp/.codex/config.toml'
+		});
 		// Default fs mocks
 		vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
 		vi.mocked(fsPromises.writeFile).mockResolvedValue(undefined);
@@ -396,6 +411,30 @@ describe('LoopService', () => {
 						cwd: '/test/project'
 					})
 				);
+			});
+
+			it('should reject codex loop execution when permission preflight fails', async () => {
+				vi.mocked(runCodexExecutionPreflight).mockReturnValueOnce({
+					success: false,
+					errors: ['Project "/test/project" trust_level is "untrusted".'],
+					projectRoot: '/test/project',
+					configPath: '/tmp/.codex/config.toml'
+				});
+
+				const result = await service.run({
+					prompt: 'default',
+					iterations: 1,
+					sleepSeconds: 0,
+					progressFile: '/test/progress.txt',
+					executor: 'codex'
+				});
+
+				expect(result.finalStatus).toBe('error');
+				expect(result.totalIterations).toBe(0);
+				expect(result.tasksCompleted).toBe(0);
+				expect(result.errorMessage).toContain('Codex execution blocked');
+				expect(result.errorMessage).toContain('trust_level');
+				expect(mockSpawnSync).not.toHaveBeenCalled();
 			});
 
 			it('should handle non-zero exit code', async () => {
