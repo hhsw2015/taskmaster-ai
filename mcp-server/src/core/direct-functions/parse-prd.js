@@ -5,6 +5,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { createTmCore } from '@tm/core';
 import { getDefaultNumTasks } from '../../../../scripts/modules/config-manager.js';
 import { parsePRD } from '../../../../scripts/modules/task-manager.js';
 import {
@@ -26,6 +27,7 @@ import { resolvePrdPath, resolveProjectPath } from '../utils/path-utils.js';
  * @param {boolean} args.force - Whether to force parsing.
  * @param {boolean} args.append - Whether to append to the output file.
  * @param {boolean} args.research - Whether to use research mode.
+ * @param {'local'|'hamster'} [args.destination] - Where to parse the PRD.
  * @param {string} args.tag - Tag context for organizing tasks into separate task lists.
  * @param {Object} log - Logger object.
  * @param {Object} context - Context object containing session data.
@@ -41,6 +43,7 @@ export async function parsePRDDirect(args, log, context = {}) {
 		force,
 		append,
 		research,
+		destination: destinationArg,
 		projectRoot,
 		tag
 	} = args;
@@ -80,14 +83,6 @@ export async function parsePRDDirect(args, log, context = {}) {
 		};
 	}
 
-	// Resolve output path - use new path utilities for default
-	const outputPath = outputArg
-		? path.isAbsolute(outputArg)
-			? outputArg
-			: path.resolve(projectRoot, outputArg)
-		: resolveProjectPath(TASKMASTER_TASKS_FILE, args) ||
-			path.resolve(projectRoot, TASKMASTER_TASKS_FILE);
-
 	// Check if input file exists
 	if (!fs.existsSync(inputPath)) {
 		const errorMsg = `Input PRD file not found at resolved path: ${inputPath}`;
@@ -97,6 +92,23 @@ export async function parsePRDDirect(args, log, context = {}) {
 			error: { code: 'FILE_NOT_FOUND', message: errorMsg }
 		};
 	}
+
+	const destination = destinationArg === 'hamster' ? 'hamster' : 'local';
+	if (destination === 'hamster') {
+		return parsePRDToHamster({
+			inputPath,
+			projectRoot,
+			logWrapper
+		});
+	}
+
+	// Resolve output path - use new path utilities for default
+	const outputPath = outputArg
+		? path.isAbsolute(outputArg)
+			? outputArg
+			: path.resolve(projectRoot, outputArg)
+		: resolveProjectPath(TASKMASTER_TASKS_FILE, args) ||
+			path.resolve(projectRoot, TASKMASTER_TASKS_FILE);
 
 	const outputDir = path.dirname(outputPath);
 	try {
@@ -212,5 +224,95 @@ export async function parsePRDDirect(args, log, context = {}) {
 		if (!wasSilent && isSilentMode()) {
 			disableSilentMode();
 		}
+	}
+}
+
+/**
+ * Parse PRD and create a Hamster brief via cloud API.
+ *
+ * @param {Object} options
+ * @param {string} options.inputPath
+ * @param {string} options.projectRoot
+ * @param {Object} options.logWrapper
+ * @returns {Promise<Object>}
+ */
+async function parsePRDToHamster({ inputPath, projectRoot, logWrapper }) {
+	let prdContent;
+	try {
+		prdContent = fs.readFileSync(inputPath, 'utf8');
+	} catch (error) {
+		const errorMsg = `Failed to read PRD file: ${error.message}`;
+		logWrapper.error(errorMsg);
+		return {
+			success: false,
+			error: {
+				code: 'FILE_READ_ERROR',
+				message: errorMsg
+			}
+		};
+	}
+
+	if (!prdContent.trim()) {
+		return {
+			success: false,
+			error: {
+				code: 'INVALID_INPUT',
+				message: 'PRD file is empty'
+			}
+		};
+	}
+
+	try {
+		const tmCore = await createTmCore({ projectPath: projectRoot });
+		const result = await tmCore.integration.generateBriefFromPrd({
+			prdContent
+		});
+
+		if (!result.success || !result.brief) {
+			return {
+				success: false,
+				error: {
+					code: result.error?.code || 'CLOUD_PRD_IMPORT_FAILED',
+					message:
+						result.error?.message ||
+						'Failed to create Hamster brief from PRD content.'
+				}
+			};
+		}
+
+		try {
+			await tmCore.auth.updateContext({
+				orgId: result.orgId,
+				briefId: result.brief.id,
+				briefName: result.brief.title,
+				briefStatus: result.brief.status
+			});
+		} catch (error) {
+			logWrapper.warn(
+				`Brief created but failed to update context automatically: ${error.message}`
+			);
+		}
+
+		const successMsg = `Successfully created Hamster brief ${result.brief.id}`;
+		logWrapper.success(successMsg);
+		return {
+			success: true,
+			data: {
+				message: successMsg,
+				destination: 'hamster',
+				brief: result.brief,
+				orgId: result.orgId,
+				jobId: result.jobId
+			}
+		};
+	} catch (error) {
+		logWrapper.error(`Error creating Hamster brief: ${error.message}`);
+		return {
+			success: false,
+			error: {
+				code: 'PARSE_PRD_CLOUD_ERROR',
+				message: error.message || 'Unknown error creating Hamster brief'
+			}
+		};
 	}
 }

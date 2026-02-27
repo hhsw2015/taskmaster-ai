@@ -37,6 +37,13 @@ export function registerParsePRDTool(server) {
 				.string()
 				.describe('The directory of the project. Must be an absolute path.'),
 			tag: z.string().optional().describe('Tag context to operate on'),
+			destination: z
+				.enum(['local', 'hamster'])
+				.optional()
+				.default('local')
+				.describe(
+					'Where to parse the PRD: "local" writes tasks.json, "hamster" creates a cloud brief and tasks'
+				),
 			output: z
 				.string()
 				.optional()
