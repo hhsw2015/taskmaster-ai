@@ -134,7 +134,7 @@ export class NextCommand extends Command {
 		taskId: string,
 		phase: string,
 		tddPhase: string | undefined,
-		subtaskId: string | undefined,
+		subtaskId: string | number | undefined,
 		executor: TaskExecutor
 	): Promise<{
 		executor: TaskExecutor;
@@ -168,8 +168,11 @@ export class NextCommand extends Command {
 		return { executor, workItemId, command };
 	}
 
-	private composeWorkItemId(taskId: string, subtaskId: string): string {
-		return subtaskId.includes('.') ? subtaskId : `${taskId}.${subtaskId}`;
+	private composeWorkItemId(taskId: string, subtaskId: string | number): string {
+		const normalizedSubtaskId = String(subtaskId);
+		return normalizedSubtaskId.includes('.')
+			? normalizedSubtaskId
+			: `${taskId}.${normalizedSubtaskId}`;
 	}
 
 	private buildShellCommand(executable: string, args: string[]): string {

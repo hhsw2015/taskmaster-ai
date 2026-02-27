@@ -119,6 +119,27 @@ describe('Autopilot NextCommand', () => {
 		);
 	});
 
+	it('handles numeric subtask ids when building execution hints', async () => {
+		mockTmCore.workflow.getStatus.mockReturnValue({
+			taskId: '12',
+			phase: 'SUBTASK_LOOP',
+			tddPhase: 'RED',
+			branchName: 'task-12',
+			currentSubtask: { id: 2, title: 'Add tests', attempts: 0 }
+		});
+
+		const execute = (command as any).execute.bind(command);
+		await execute({ json: true });
+
+		expect(mockTmCore.tasks.start).toHaveBeenCalledWith(
+			'12.2',
+			expect.objectContaining({
+				dryRun: true,
+				updateStatus: false
+			})
+		);
+	});
+
 	it('registers executor option on autopilot parent command', () => {
 		const autopilot = new AutopilotCommand();
 		const option = autopilot.options.find((o) => o.long === '--executor');
