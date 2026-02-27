@@ -17,6 +17,10 @@ import {
 	toAuthenticationError
 } from '../../auth/utils/index.js';
 
+const DEFAULT_HAMSTER_SUPABASE_URL = 'https://tryhamster.com';
+const DEFAULT_HAMSTER_SUPABASE_ANON_KEY =
+	'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zdHhhdGRwbnNmYWxja3hhd3R6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3MzU3NTYsImV4cCI6MjA2NDMxMTc1Nn0.GF897_2zXRxl4pkeQ89-7xF4TkJfJuYPWKhv1bTbv9k';
+
 export class SupabaseAuthClient {
 	private static instance: SupabaseAuthClient | null = null;
 	private client: SupabaseJSClient | null = null;
@@ -63,10 +67,13 @@ export class SupabaseAuthClient {
 			// Get Supabase configuration from environment
 			// Runtime vars (TM_*) take precedence over build-time vars (TM_PUBLIC_*)
 			const supabaseUrl =
-				process.env.TM_SUPABASE_URL || process.env.TM_PUBLIC_SUPABASE_URL;
+				process.env.TM_SUPABASE_URL ||
+				process.env.TM_PUBLIC_SUPABASE_URL ||
+				DEFAULT_HAMSTER_SUPABASE_URL;
 			const supabaseAnonKey =
 				process.env.TM_SUPABASE_ANON_KEY ||
-				process.env.TM_PUBLIC_SUPABASE_ANON_KEY;
+				process.env.TM_PUBLIC_SUPABASE_ANON_KEY ||
+				DEFAULT_HAMSTER_SUPABASE_ANON_KEY;
 
 			if (!supabaseUrl || !supabaseAnonKey) {
 				throw new AuthenticationError(

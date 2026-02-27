@@ -40,6 +40,8 @@ describe('SupabaseAuthClient', () => {
 	// Store original env values for cleanup
 	let originalSupabaseUrl: string | undefined;
 	let originalSupabaseAnonKey: string | undefined;
+	let originalPublicSupabaseUrl: string | undefined;
+	let originalPublicSupabaseAnonKey: string | undefined;
 
 	beforeEach(() => {
 		// Reset singleton before each test
@@ -48,6 +50,8 @@ describe('SupabaseAuthClient', () => {
 		// Store original values
 		originalSupabaseUrl = process.env.TM_SUPABASE_URL;
 		originalSupabaseAnonKey = process.env.TM_SUPABASE_ANON_KEY;
+		originalPublicSupabaseUrl = process.env.TM_PUBLIC_SUPABASE_URL;
+		originalPublicSupabaseAnonKey = process.env.TM_PUBLIC_SUPABASE_ANON_KEY;
 
 		// Set required environment variables
 		process.env.TM_SUPABASE_URL = 'https://test.supabase.co';
@@ -95,6 +99,18 @@ describe('SupabaseAuthClient', () => {
 		} else {
 			process.env.TM_SUPABASE_ANON_KEY = originalSupabaseAnonKey;
 		}
+
+		if (originalPublicSupabaseUrl === undefined) {
+			delete process.env.TM_PUBLIC_SUPABASE_URL;
+		} else {
+			process.env.TM_PUBLIC_SUPABASE_URL = originalPublicSupabaseUrl;
+		}
+
+		if (originalPublicSupabaseAnonKey === undefined) {
+			delete process.env.TM_PUBLIC_SUPABASE_ANON_KEY;
+		} else {
+			process.env.TM_PUBLIC_SUPABASE_ANON_KEY = originalPublicSupabaseAnonKey;
+		}
 	});
 
 	describe('Singleton Pattern', () => {
@@ -111,6 +127,17 @@ describe('SupabaseAuthClient', () => {
 			const instance2 = SupabaseAuthClient.getInstance();
 
 			expect(instance1).not.toBe(instance2);
+		});
+	});
+
+	describe('getClient', () => {
+		it('should use built-in Hamster Supabase defaults when env vars are missing', () => {
+			delete process.env.TM_SUPABASE_URL;
+			delete process.env.TM_SUPABASE_ANON_KEY;
+			delete process.env.TM_PUBLIC_SUPABASE_URL;
+			delete process.env.TM_PUBLIC_SUPABASE_ANON_KEY;
+
+			expect(() => authClient.getClient()).not.toThrow();
 		});
 	});
 
