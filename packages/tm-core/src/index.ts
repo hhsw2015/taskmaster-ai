@@ -77,6 +77,7 @@ export type {
 } from './modules/tasks/services/task-service.js';
 
 export type {
+	TaskExecutor,
 	StartTaskOptions,
 	StartTaskResult,
 	ConflictCheckResult
@@ -153,6 +154,7 @@ export type {
 // Loop types
 export type {
 	LoopPreset,
+	LoopExecutor,
 	LoopConfig,
 	LoopIteration,
 	LoopResult,

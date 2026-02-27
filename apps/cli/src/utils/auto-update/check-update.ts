@@ -5,8 +5,8 @@
  * hitting npm on every CLI invocation. Cache expires after 1 hour.
  */
 
-import fs from 'node:fs';
 import https from 'https';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 

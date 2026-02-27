@@ -2,7 +2,7 @@
  * @fileoverview Start Command - Initialize and start TDD workflow
  */
 
-import { createTmCore, MainTaskIdSchema } from '@tm/core';
+import { MainTaskIdSchema, createTmCore } from '@tm/core';
 import { Command } from 'commander';
 import { getProjectRoot } from '../../utils/project-root.js';
 import { AutopilotBaseOptions, OutputFormatter } from './shared.js';

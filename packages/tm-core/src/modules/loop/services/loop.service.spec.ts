@@ -3,18 +3,18 @@
  * Tests the synchronous spawnSync-based implementation
  */
 
+import * as childProcess from 'node:child_process';
+import * as fsPromises from 'node:fs/promises';
 import {
+	type MockInstance,
 	afterEach,
 	beforeEach,
 	describe,
 	expect,
 	it,
-	vi,
-	type MockInstance
+	vi
 } from 'vitest';
 import { LoopService, type LoopServiceOptions } from './loop.service.js';
-import * as childProcess from 'node:child_process';
-import * as fsPromises from 'node:fs/promises';
 
 // Mock child_process and fs/promises
 vi.mock('node:child_process');
@@ -122,6 +122,14 @@ describe('LoopService', () => {
 	});
 
 	describe('checkSandboxAuth()', () => {
+		it('should return unsupported error for non-claude executors', () => {
+			const service = new LoopService(defaultOptions);
+			const result = service.checkSandboxAuth('codex');
+			expect(result.ready).toBe(false);
+			expect(result.error).toContain('only supported for the Claude executor');
+			expect(mockSpawnSync).not.toHaveBeenCalled();
+		});
+
 		it('should return ready=true when output contains ok', () => {
 			mockSpawnSync.mockReturnValue({
 				stdout: 'OK',
@@ -281,6 +289,33 @@ describe('LoopService', () => {
 					})
 				);
 			});
+
+			it('should call codex exec when executor is codex', async () => {
+				mockSpawnSync.mockReturnValue({
+					stdout: 'Done',
+					stderr: '',
+					status: 0,
+					signal: null,
+					pid: 123,
+					output: []
+				});
+
+				await service.run({
+					prompt: 'default',
+					iterations: 1,
+					sleepSeconds: 0,
+					progressFile: '/test/progress.txt',
+					executor: 'codex'
+				});
+
+				expect(mockSpawnSync).toHaveBeenCalledWith(
+					'codex',
+					expect.arrayContaining(['exec', expect.any(String)]),
+					expect.objectContaining({
+						cwd: '/test/project'
+					})
+				);
+			});
 		});
 
 		describe('completion marker detection', () => {
@@ -328,6 +363,41 @@ describe('LoopService', () => {
 		});
 
 		describe('error handling', () => {
+			it('should run codex with native sandbox when sandbox mode is enabled', async () => {
+				mockSpawnSync.mockReturnValue({
+					stdout: 'Done',
+					stderr: '',
+					status: 0,
+					signal: null,
+					pid: 123,
+					output: []
+				});
+
+				const result = await service.run({
+					prompt: 'default',
+					iterations: 1,
+					sleepSeconds: 0,
+					progressFile: '/test/progress.txt',
+					sandbox: true,
+					executor: 'codex'
+				});
+
+				expect(result.finalStatus).toBe('max_iterations');
+				expect(result.tasksCompleted).toBe(1);
+				expect(mockSpawnSync).toHaveBeenCalledWith(
+					'codex',
+					expect.arrayContaining([
+						'exec',
+						'--sandbox',
+						'workspace-write',
+						expect.any(String)
+					]),
+					expect.objectContaining({
+						cwd: '/test/project'
+					})
+				);
+			});
+
 			it('should handle non-zero exit code', async () => {
 				mockSpawnSync.mockReturnValue({
 					stdout: '',
@@ -590,7 +660,12 @@ describe('LoopService', () => {
 	describe('buildContextHeader (inlined)', () => {
 		let service: LoopService;
 		let buildContextHeader: (
-			config: { iterations: number; progressFile: string; tag?: string },
+			config: {
+				iterations: number;
+				progressFile: string;
+				tag?: string;
+				executor?: 'claude' | 'codex';
+			},
 			iteration: number
 		) => string;
 
@@ -617,6 +692,18 @@ describe('LoopService', () => {
 				1
 			);
 			expect(header).toContain('@/test/progress.txt');
+		});
+
+		it('should use AGENTS.md context when executor is codex', () => {
+			const header = buildContextHeader(
+				{
+					iterations: 1,
+					progressFile: '/test/progress.txt',
+					executor: 'codex'
+				},
+				1
+			);
+			expect(header).toContain('@AGENTS.md');
 		});
 
 		it('should NOT include tasks file reference (preset controls task source)', () => {

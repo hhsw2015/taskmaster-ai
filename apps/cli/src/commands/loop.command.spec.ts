@@ -94,6 +94,9 @@ describe('LoopCommand', () => {
 			},
 			auth: {
 				getContext: vi.fn().mockReturnValue(null)
+			},
+			config: {
+				getConfig: vi.fn().mockReturnValue({})
 			}
 		};
 
@@ -168,6 +171,11 @@ describe('LoopCommand', () => {
 
 		it('should have --project option', () => {
 			const option = loopCommand.options.find((o) => o.long === '--project');
+			expect(option).toBeDefined();
+		});
+
+		it('should have --executor option', () => {
+			const option = loopCommand.options.find((o) => o.long === '--executor');
 			expect(option).toBeDefined();
 		});
 	});
@@ -251,6 +259,42 @@ describe('LoopCommand', () => {
 	});
 
 	describe('execute integration', () => {
+		it('should pass executor to tmCore.loop.run', async () => {
+			const result = createMockResult();
+			mockLoopRun.mockResolvedValue(result);
+
+			const execute = (loopCommand as any).execute.bind(loopCommand);
+			await execute({ executor: 'codex' });
+
+			expect(mockLoopRun).toHaveBeenCalledWith(
+				expect.objectContaining({
+					executor: 'codex'
+				})
+			);
+		});
+
+		it('should infer codex executor from models.main.provider when executor not specified', async () => {
+			const result = createMockResult();
+			mockLoopRun.mockResolvedValue(result);
+			mockTmCore.config.getConfig.mockReturnValue({
+				models: {
+					main: {
+						provider: 'codex-cli',
+						modelId: 'gpt-5.3-codex'
+					}
+				}
+			});
+
+			const execute = (loopCommand as any).execute.bind(loopCommand);
+			await execute({});
+
+			expect(mockLoopRun).toHaveBeenCalledWith(
+				expect.objectContaining({
+					executor: 'codex'
+				})
+			);
+		});
+
 		it('should call tmCore.loop.run with parsed config', async () => {
 			const result = createMockResult();
 			mockLoopRun.mockResolvedValue(result);
@@ -441,6 +485,23 @@ describe('LoopCommand', () => {
 			expect(displayError).toHaveBeenCalledWith(
 				expect.objectContaining({ message: 'Sandbox auth failed' }),
 				{ skipExit: true }
+			);
+		});
+
+		it('should skip Docker sandbox auth checks when sandbox is used with codex executor', async () => {
+			const result = createMockResult();
+			mockLoopRun.mockResolvedValue(result);
+			const execute = (loopCommand as any).execute.bind(loopCommand);
+
+			await execute({ sandbox: true, executor: 'codex' });
+
+			expect(mockTmCore.loop.checkSandboxAuth).not.toHaveBeenCalled();
+			expect(mockTmCore.loop.runInteractiveAuth).not.toHaveBeenCalled();
+			expect(mockLoopRun).toHaveBeenCalledWith(
+				expect.objectContaining({
+					sandbox: true,
+					executor: 'codex'
+				})
 			);
 		});
 

@@ -4,10 +4,10 @@
  */
 
 import {
+	TaskIdSchema,
 	type TaskStatus,
 	type TmCore,
-	createTmCore,
-	TaskIdSchema
+	createTmCore
 } from '@tm/core';
 import type { StorageType } from '@tm/core';
 import boxen from 'boxen';

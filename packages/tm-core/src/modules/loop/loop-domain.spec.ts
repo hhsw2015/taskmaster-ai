@@ -3,8 +3,8 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LoopDomain } from './loop-domain.js';
 import type { ConfigManager } from '../config/managers/config-manager.js';
+import { LoopDomain } from './loop-domain.js';
 import type { LoopConfig } from './types.js';
 
 // Mock ConfigManager
@@ -57,6 +57,11 @@ describe('LoopDomain', () => {
 			expect(config.sleepSeconds).toBe(5);
 		});
 
+		it('should apply default executor of "claude"', () => {
+			const config = (loopDomain as any).buildConfig({});
+			expect(config.executor).toBe('claude');
+		});
+
 		it('should construct progressFile from projectRoot', () => {
 			const config = (loopDomain as any).buildConfig({});
 			expect(config.progressFile).toBe(
@@ -91,6 +96,11 @@ describe('LoopDomain', () => {
 		it('should respect provided tag', () => {
 			const config = (loopDomain as any).buildConfig({ tag: 'my-tag' });
 			expect(config.tag).toBe('my-tag');
+		});
+
+		it('should respect provided executor', () => {
+			const config = (loopDomain as any).buildConfig({ executor: 'codex' });
+			expect(config.executor).toBe('codex');
 		});
 
 		it('should handle all options combined', () => {

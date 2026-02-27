@@ -11,6 +11,7 @@ export interface AutopilotBaseOptions {
 	projectRoot?: string;
 	json?: boolean;
 	verbose?: boolean;
+	executor?: string;
 }
 
 /**

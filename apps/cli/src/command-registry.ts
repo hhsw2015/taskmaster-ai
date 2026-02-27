@@ -13,9 +13,9 @@ import { ExportCommand, ExportTagCommand } from './commands/export.command.js';
 import { GenerateCommand } from './commands/generate.command.js';
 // Import all commands
 import { ListTasksCommand } from './commands/list.command.js';
-import { LoopCommand } from './commands/loop.command.js';
 import { LoginCommand } from './commands/login.command.js';
 import { LogoutCommand } from './commands/logout.command.js';
+import { LoopCommand } from './commands/loop.command.js';
 import { NextCommand } from './commands/next.command.js';
 import { SetStatusCommand } from './commands/set-status.command.js';
 import { ShowCommand } from './commands/show.command.js';
@@ -61,7 +61,7 @@ export class CommandRegistry {
 		},
 		{
 			name: 'start',
-			description: 'Start working on a task with claude-code',
+			description: 'Start working on a task with a coding agent CLI',
 			commandClass: StartCommand as any,
 			category: 'task'
 		},
@@ -92,7 +92,7 @@ export class CommandRegistry {
 		},
 		{
 			name: 'loop',
-			description: 'Run Claude Code in a loop, one task per iteration',
+			description: 'Run coding agent CLI in a loop, one task per iteration',
 			commandClass: LoopCommand as any,
 			category: 'development'
 		},

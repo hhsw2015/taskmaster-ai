@@ -4,13 +4,8 @@
  */
 
 import {
-	OUTPUT_FORMATS,
-	buildBlocksMap,
-	createTmCore,
-	filterBlockingTasks,
-	filterReadyTasks,
-	isTaskComplete,
 	type InvalidDependency,
+	OUTPUT_FORMATS,
 	type OutputFormat,
 	STATUS_ICONS,
 	TASK_STATUSES,
@@ -18,7 +13,12 @@ import {
 	type TaskStatus,
 	type TaskWithBlocks,
 	type TmCore,
-	type WatchSubscription
+	type WatchSubscription,
+	buildBlocksMap,
+	createTmCore,
+	filterBlockingTasks,
+	filterReadyTasks,
+	isTaskComplete
 } from '@tm/core';
 import type { StorageType } from '@tm/core';
 import chalk from 'chalk';

@@ -8,6 +8,7 @@ import { spawn } from 'child_process';
 import {
 	type StartTaskResult as CoreStartTaskResult,
 	type StorageType,
+	type TaskExecutor,
 	type TmCore,
 	createTmCore
 } from '@tm/core';
@@ -30,6 +31,7 @@ export interface StartCommandOptions {
 	dryRun?: boolean;
 	force?: boolean;
 	noStatusUpdate?: boolean;
+	executor?: string;
 }
 
 /**
@@ -53,7 +55,7 @@ export class StartCommand extends Command {
 
 		// Configure the command
 		this.description(
-			'Start working on a task by launching claude-code with context'
+			'Start working on a task by launching a coding agent CLI with context'
 		)
 			.argument('[id]', 'Task ID to start working on')
 			.option('-i, --id <id>', 'Task ID to start working on')
@@ -64,12 +66,13 @@ export class StartCommand extends Command {
 			)
 			.option(
 				'--dry-run',
-				'Show what would be executed without launching claude-code'
+				'Show what would be executed without launching the coding agent CLI'
 			)
 			.option(
 				'--force',
 				'Force start even if another task is already in-progress'
 			)
+			.option('-e, --executor <executor>', 'Execution backend (claude|codex)')
 			.option(
 				'--no-status-update',
 				'Do not automatically update task status to in-progress'
@@ -100,6 +103,7 @@ export class StartCommand extends Command {
 			spinner = ora('Initializing Task Master...').start();
 			await this.initializeCore(getProjectRoot(options.project));
 			spinner.succeed('Task Master initialized');
+			const executor = this.resolveExecutor(options.executor);
 
 			// Get the task ID from argument or option, or find next available task
 			const idArg = taskId || options.id || null;
@@ -122,18 +126,22 @@ export class StartCommand extends Command {
 
 			// Show pre-launch message (no spinner needed, it's just display)
 			if (!options.dryRun) {
-				await this.showPreLaunchMessage(targetTaskId);
+				await this.showPreLaunchMessage(targetTaskId, executor);
 			}
 
 			// Use tm-core's startTask method with spinner
 			spinner = ora('Preparing task execution...').start();
-			const coreResult = await this.performStartTask(targetTaskId, options);
+			const coreResult = await this.performStartTask(
+				targetTaskId,
+				options,
+				executor
+			);
 
 			if (coreResult.started) {
 				spinner.succeed(
 					options.dryRun
 						? 'Dry run completed'
-						: 'Task prepared - launching Claude...'
+						: `Task prepared - launching ${executor}...`
 				);
 			} else {
 				spinner.fail('Task execution failed');
@@ -141,9 +149,9 @@ export class StartCommand extends Command {
 
 			// Execute command if we have one and it's not a dry run
 			if (!options.dryRun && coreResult.command) {
-				// Stop any remaining spinners before launching Claude
+				// Stop any remaining spinners before launching the executor
 				if (spinner && !spinner.isSpinning) {
-					// Clear the line to make room for Claude
+					// Clear the line to make room for the executor output
 					console.log();
 				}
 				await this.executeChildProcess(coreResult.command);
@@ -206,7 +214,10 @@ export class StartCommand extends Command {
 	/**
 	 * Show pre-launch message using tm-core data
 	 */
-	private async showPreLaunchMessage(targetTaskId: string): Promise<void> {
+	private async showPreLaunchMessage(
+		targetTaskId: string,
+		executor: TaskExecutor
+	): Promise<void> {
 		if (!this.tmCore) return;
 
 		const { task, isSubtask } = await this.tmCore.tasks.get(targetTaskId);
@@ -218,7 +229,7 @@ export class StartCommand extends Command {
 			console.log(
 				chalk.green('🚀 Starting: ') + chalk.white.bold(workItemText)
 			);
-			console.log(chalk.gray('Launching Claude Code...'));
+			console.log(chalk.gray(`Launching ${executor}...`));
 			console.log(); // Empty line
 		}
 	}
@@ -228,7 +239,8 @@ export class StartCommand extends Command {
 	 */
 	private async performStartTask(
 		targetTaskId: string,
-		options: StartCommandOptions
+		options: StartCommandOptions,
+		executor: TaskExecutor
 	): Promise<CoreStartTaskResult> {
 		if (!this.tmCore) {
 			throw new Error('TmCore not initialized');
@@ -244,7 +256,8 @@ export class StartCommand extends Command {
 		const result = await this.tmCore.tasks.start(targetTaskId, {
 			dryRun: options.dryRun,
 			force: options.force,
-			updateStatus: !options.noStatusUpdate
+			updateStatus: !options.noStatusUpdate,
+			executor
 		});
 
 		if (statusSpinner) {
@@ -273,8 +286,8 @@ export class StartCommand extends Command {
 	}): Promise<void> {
 		return new Promise((resolve, reject) => {
 			// Don't show the full command with args as it can be very long
-			console.log(chalk.green('🚀 Launching Claude Code...'));
-			console.log(); // Add space before Claude takes over
+			console.log(chalk.green(`🚀 Launching ${command.executable}...`));
+			console.log(); // Add space before the executor takes over
 
 			const childProcess = spawn(command.executable, command.args, {
 				cwd: command.cwd,
@@ -305,6 +318,103 @@ export class StartCommand extends Command {
 			process.on('SIGTERM', cleanup);
 			process.on('exit', cleanup);
 		});
+	}
+
+	private resolveExecutor(optionValue?: string): TaskExecutor {
+		const configuredExecutor = this.getConfiguredExecutor();
+		const inferredExecutor = this.inferExecutorFromConfig();
+		const executorValue =
+			optionValue ??
+			process.env.TASKMASTER_EXECUTOR ??
+			configuredExecutor ??
+			inferredExecutor ??
+			'claude';
+		const normalized = executorValue.toLowerCase();
+
+		if (normalized === 'claude' || normalized === 'codex') {
+			return normalized;
+		}
+
+		throw new Error(
+			`Invalid executor "${executorValue}". Supported values: claude, codex.`
+		);
+	}
+
+	private getConfiguredExecutor(): string | undefined {
+		if (!this.tmCore) {
+			return undefined;
+		}
+		const config = this.tmCore.config.getConfig();
+		const customConfig = config.custom as Record<string, unknown> | undefined;
+		const executor = customConfig?.executor;
+		return typeof executor === 'string' ? executor : undefined;
+	}
+
+	private inferExecutorFromConfig(): TaskExecutor | undefined {
+		if (!this.tmCore) {
+			return undefined;
+		}
+		const config = this.tmCore.config.getConfig() as Record<string, unknown>;
+
+		// Legacy/new config compatibility: explicit provider field on root
+		if (this.isCodexProvider(config.aiProvider)) {
+			return 'codex';
+		}
+
+		// Common config structure: models.main can be a string model id or object with provider/modelId
+		const models = this.asObject(config.models);
+		if (this.isCodexModelConfig(models?.main)) {
+			return 'codex';
+		}
+
+		// If codexCli settings are explicitly present, prefer Codex executor by default
+		if (this.isNonEmptyObject(config.codexCli)) {
+			return 'codex';
+		}
+
+		return undefined;
+	}
+
+	private isCodexModelConfig(value: unknown): boolean {
+		if (typeof value === 'string') {
+			return this.isCodexModelId(value);
+		}
+
+		const modelConfig = this.asObject(value);
+		if (!modelConfig) return false;
+
+		return (
+			this.isCodexProvider(modelConfig.provider) ||
+			this.isCodexModelId(modelConfig.modelId)
+		);
+	}
+
+	private isCodexProvider(provider: unknown): boolean {
+		if (typeof provider !== 'string') return false;
+		const normalized = provider.trim().toLowerCase();
+		return (
+			normalized === 'codex' ||
+			normalized === 'codex-cli' ||
+			normalized === 'codex-lb'
+		);
+	}
+
+	private isCodexModelId(modelId: unknown): boolean {
+		return (
+			typeof modelId === 'string' && modelId.toLowerCase().includes('codex')
+		);
+	}
+
+	private asObject(value: unknown): Record<string, unknown> | undefined {
+		if (typeof value === 'object' && value !== null) {
+			return value as Record<string, unknown>;
+		}
+		return undefined;
+	}
+
+	private isNonEmptyObject(value: unknown): boolean {
+		const obj = this.asObject(value);
+		return Boolean(obj && Object.keys(obj).length > 0);
 	}
 
 	/**
@@ -357,7 +467,7 @@ export class StartCommand extends Command {
 		const task = result.task;
 
 		if (options.dryRun) {
-			// For dry run, show full details since Claude Code won't be launched
+			// For dry run, show full details since no executor process will be launched
 			let headerText = `Dry Run: Starting Task #${task.id} - ${task.title}`;
 
 			// If working on a specific subtask, highlight it in the header
@@ -371,12 +481,15 @@ export class StartCommand extends Command {
 				storageType: result.storageType
 			});
 
-			// Show claude-code prompt
+			const executorLabel = result.command?.executable ?? 'agent';
+			// Show executor prompt
 			if (result.executionOutput) {
 				console.log(); // Empty line for spacing
 				console.log(
 					boxen(
-						chalk.white.bold('Claude-Code Prompt:') +
+						chalk.white.bold(
+							`${executorLabel.charAt(0).toUpperCase()}${executorLabel.slice(1)} Prompt:`
+						) +
 							'\n\n' +
 							result.executionOutput,
 						{
@@ -393,7 +506,7 @@ export class StartCommand extends Command {
 			console.log(
 				boxen(
 					chalk.yellow(
-						'🔍 Dry run - claude-code would be launched with the above prompt'
+						`🔍 Dry run - ${executorLabel} would be launched with the above prompt`
 					),
 					{
 						padding: { top: 0, bottom: 0, left: 1, right: 1 },
@@ -403,7 +516,7 @@ export class StartCommand extends Command {
 				)
 			);
 		} else {
-			// For actual execution, show minimal info since Claude Code will clear the terminal
+			// For actual execution, show minimal info since the executor will take over the terminal
 			if (result.started) {
 				// Determine what was worked on - task or subtask
 				let workItemText = `Task: #${task.id} - ${task.title}`;
@@ -414,7 +527,7 @@ export class StartCommand extends Command {
 					statusTarget = `${task.id}.${result.subtaskId}`;
 				}
 
-				// Post-execution message (shown after Claude Code exits)
+				// Post-execution message (shown after executor exits)
 				console.log(
 					boxen(
 						chalk.green.bold('🎉 Task Session Complete!') +
@@ -441,7 +554,7 @@ export class StartCommand extends Command {
 				console.log(
 					boxen(
 						chalk.red(
-							'❌ Failed to launch claude-code' +
+							'❌ Failed to launch coding agent CLI' +
 								(result.error ? `\nError: ${result.error}` : '')
 						),
 						{

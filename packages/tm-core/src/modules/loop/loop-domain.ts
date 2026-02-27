@@ -12,7 +12,12 @@ import {
 	getPreset
 } from './presets/index.js';
 import { LoopService } from './services/loop.service.js';
-import type { LoopConfig, LoopPreset, LoopResult } from './types.js';
+import type {
+	LoopConfig,
+	LoopExecutor,
+	LoopPreset,
+	LoopResult
+} from './types.js';
 
 /**
  * Loop Domain - Unified API for loop operations
@@ -30,22 +35,28 @@ export class LoopDomain {
 	// ========== Sandbox Auth Operations ==========
 
 	/**
-	 * Check if Docker sandbox auth is ready
+	 * Check if sandbox auth is ready
 	 * @returns Object with ready status and optional error message
 	 */
-	checkSandboxAuth(): { ready: boolean; error?: string } {
+	checkSandboxAuth(executor: LoopExecutor = 'claude'): {
+		ready: boolean;
+		error?: string;
+	} {
 		const service = new LoopService({ projectRoot: this.projectRoot });
-		return service.checkSandboxAuth();
+		return service.checkSandboxAuth(executor);
 	}
 
 	/**
-	 * Run Docker sandbox session for user authentication
+	 * Run sandbox session for user authentication
 	 * Blocks until user completes auth
 	 * @returns Object with success status and optional error message
 	 */
-	runInteractiveAuth(): { success: boolean; error?: string } {
+	runInteractiveAuth(executor: LoopExecutor = 'claude'): {
+		success: boolean;
+		error?: string;
+	} {
 		const service = new LoopService({ projectRoot: this.projectRoot });
-		return service.runInteractiveAuth();
+		return service.runInteractiveAuth(executor);
 	}
 
 	// ========== Loop Operations ==========
@@ -190,6 +201,7 @@ export class LoopDomain {
 				path.join(this.projectRoot, '.taskmaster', 'progress.txt'),
 			sleepSeconds: partial.sleepSeconds ?? 5,
 			tag: partial.tag,
+			executor: partial.executor ?? 'claude',
 			sandbox: partial.sandbox ?? false,
 			includeOutput: partial.includeOutput ?? false,
 			verbose: partial.verbose ?? false,

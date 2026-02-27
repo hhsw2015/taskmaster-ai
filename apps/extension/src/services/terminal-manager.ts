@@ -29,7 +29,7 @@ export class TerminalManager {
 	) {}
 
 	/**
-	 * Execute a task in a new VS Code terminal with Claude
+	 * Execute a task in a new VS Code terminal
 	 * Uses @tm/core for consistent task management with the CLI
 	 */
 	async executeTask(
@@ -55,7 +55,7 @@ export class TerminalManager {
 				updateStatus: true
 			});
 
-			if (!startResult.started || !startResult.executionOutput) {
+			if (!startResult.started || !startResult.command) {
 				throw new Error(
 					startResult.error || 'Failed to start task with tm-core'
 				);
@@ -68,12 +68,17 @@ export class TerminalManager {
 			// Store terminal reference for potential cleanup
 			this.terminals.set(taskId, terminal);
 
-			// Show terminal and run Claude command
+			// Show terminal and run executor command
 			terminal.show();
-			const command = `claude "${startResult.executionOutput}"`;
-			terminal.sendText(command);
+			const shellCommand = this.buildShellCommand(
+				startResult.command.executable,
+				startResult.command.args
+			);
+			terminal.sendText(shellCommand);
 
-			this.logger.log(`Launched Claude for task ${taskId} using tm-core`);
+			this.logger.log(
+				`Launched ${startResult.command.executable} for task ${taskId} using tm-core`
+			);
 
 			return {
 				success: true,
@@ -99,6 +104,16 @@ export class TerminalManager {
 			cwd: workspaceRoot,
 			iconPath: new vscode.ThemeIcon('play') // Use a VS Code built-in icon for now
 		});
+	}
+
+	private buildShellCommand(executable: string, args: string[]): string {
+		const escapedArgs = args.map((arg) => this.shellEscapeArg(arg));
+		return [executable, ...escapedArgs].join(' ');
+	}
+
+	private shellEscapeArg(value: string): string {
+		if (!value) return "''";
+		return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 	}
 
 	/**

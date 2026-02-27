@@ -25,7 +25,8 @@ jest.unstable_mockModule('../../../scripts/modules/config-manager.js', () => ({
 		'gpt-5-codex',
 		'gpt-5.1',
 		'gpt-5.1-codex-max',
-		'gpt-5.2'
+		'gpt-5.2',
+		'gpt-5.3-codex'
 	]),
 	// Provide commonly imported getters to satisfy other module imports if any
 	getDebugFlag: jest.fn(() => false),
@@ -73,7 +74,8 @@ describe('CodexCliProvider', () => {
 			'gpt-5-codex',
 			'gpt-5.1',
 			'gpt-5.1-codex-max',
-			'gpt-5.2'
+			'gpt-5.2',
+			'gpt-5.3-codex'
 		]);
 	});
 
@@ -101,5 +103,35 @@ describe('CodexCliProvider', () => {
 		await provider.getClient({ commandName: 'expand' });
 		const second = createCodexCli.mock.calls[1][0];
 		expect(second.defaultSettings.env).toBeUndefined();
+	});
+
+	it('keeps xhigh reasoning effort for gpt-5.3-codex', async () => {
+		getCodexCliSettingsForCommand.mockReturnValueOnce({
+			allowNpx: true,
+			reasoningEffort: 'xhigh'
+		});
+
+		await provider.getClient({
+			commandName: 'parse-prd',
+			modelId: 'gpt-5.3-codex'
+		});
+
+		const call = createCodexCli.mock.calls[0][0];
+		expect(call.defaultSettings.reasoningEffort).toBe('xhigh');
+	});
+
+	it('caps xhigh to high for unknown model ids', async () => {
+		getCodexCliSettingsForCommand.mockReturnValueOnce({
+			allowNpx: true,
+			reasoningEffort: 'xhigh'
+		});
+
+		await provider.getClient({
+			commandName: 'parse-prd',
+			modelId: 'unknown-model'
+		});
+
+		const call = createCodexCli.mock.calls[0][0];
+		expect(call.defaultSettings.reasoningEffort).toBe('high');
 	});
 });

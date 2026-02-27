@@ -21,6 +21,7 @@ export interface AutopilotBaseOptions {
 	json?: boolean;
 	verbose?: boolean;
 	projectRoot?: string;
+	executor?: string;
 }
 
 /**
@@ -36,6 +37,7 @@ export class AutopilotCommand extends Command {
 			// Global options for all subcommands
 			.option('--json', 'Output in JSON format for machine parsing')
 			.option('-v, --verbose', 'Enable verbose output')
+			.option('-e, --executor <executor>', 'Execution backend (claude|codex)')
 			.option(
 				'-p, --project-root <path>',
 				'Project root directory (auto-detected if not specified)'

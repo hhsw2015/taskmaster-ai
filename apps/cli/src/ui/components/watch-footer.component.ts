@@ -2,8 +2,8 @@
  * @fileoverview Watch mode footer component for real-time task updates
  */
 
-import chalk from 'chalk';
 import { formatTime } from '@tm/core';
+import chalk from 'chalk';
 
 /**
  * Get display label for storage source

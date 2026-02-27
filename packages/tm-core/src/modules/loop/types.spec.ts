@@ -2,19 +2,20 @@
  * @fileoverview Tests for loop module type definitions
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type {
-	LoopPreset,
 	LoopConfig,
+	LoopExecutor,
 	LoopIteration,
+	LoopPreset,
 	LoopResult
 } from './types.js';
 
 // Also verify types are exported from the barrel
 import type {
-	LoopPreset as BarrelLoopPreset,
 	LoopConfig as BarrelLoopConfig,
 	LoopIteration as BarrelLoopIteration,
+	LoopPreset as BarrelLoopPreset,
 	LoopResult as BarrelLoopResult
 } from './index.js';
 
@@ -53,9 +54,11 @@ describe('Loop Types', () => {
 				prompt: 'test-coverage',
 				progressFile: '/progress.txt',
 				sleepSeconds: 3,
-				tag: 'feature-branch'
+				tag: 'feature-branch',
+				executor: 'codex'
 			};
 			expect(config.tag).toBe('feature-branch');
+			expect(config.executor).toBe('codex');
 		});
 
 		it('accepts custom prompt string', () => {
@@ -66,6 +69,13 @@ describe('Loop Types', () => {
 				sleepSeconds: 0
 			};
 			expect(config.prompt).toBe('/path/to/custom-prompt.txt');
+		});
+	});
+
+	describe('LoopExecutor', () => {
+		it('accepts supported executor values', () => {
+			const executors: LoopExecutor[] = ['claude', 'codex'];
+			expect(executors).toHaveLength(2);
 		});
 	});
 

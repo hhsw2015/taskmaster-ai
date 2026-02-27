@@ -4,9 +4,9 @@
  */
 
 import {
+	AUTH_ERROR_MESSAGES,
 	AuthenticationError,
-	isSupabaseAuthError,
-	AUTH_ERROR_MESSAGES
+	isSupabaseAuthError
 } from '@tm/core';
 import chalk from 'chalk';
 

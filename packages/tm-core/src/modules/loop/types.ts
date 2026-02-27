@@ -13,6 +13,11 @@ export type LoopPreset =
 	| 'entropy';
 
 /**
+ * Supported CLI executors for loop execution
+ */
+export type LoopExecutor = 'claude' | 'codex';
+
+/**
  * Output callbacks for loop execution.
  * These allow the caller (CLI/MCP) to handle presentation while
  * the service stays focused on business logic.
@@ -25,9 +30,9 @@ export type LoopPreset =
 export interface LoopOutputCallbacks {
 	/** Called at the start of each iteration (both modes) */
 	onIterationStart?: (iteration: number, total: number) => void;
-	/** Called when Claude outputs text (VERBOSE MODE ONLY) */
+	/** Called when executor outputs text (VERBOSE MODE ONLY) */
 	onText?: (text: string) => void;
-	/** Called when Claude invokes a tool (VERBOSE MODE ONLY) */
+	/** Called when executor invokes a tool (VERBOSE MODE ONLY, when tool events are available) */
 	onToolUse?: (toolName: string) => void;
 	/** Called when an error occurs (both modes) */
 	onError?: (message: string, severity?: 'warning' | 'error') => void;
@@ -53,10 +58,17 @@ export interface LoopConfig {
 	sleepSeconds: number;
 	/** Tag context to operate on (optional) */
 	tag?: string;
-	/** Run Claude in Docker sandbox mode (default: false) */
+	/** Executor backend to run loop iterations (default: "claude") */
+	executor?: LoopExecutor;
+	/**
+	 * Enable sandboxing (default: false).
+	 *
+	 * - Claude executor: Docker sandbox (`docker sandbox run claude`)
+	 * - Codex executor: native Codex sandbox (`codex exec --sandbox workspace-write`)
+	 */
 	sandbox?: boolean;
 	/**
-	 * Include full Claude output in iteration results (default: false)
+	 * Include full executor output in iteration results (default: false)
 	 *
 	 * When true: `LoopIteration.output` will contain full stdout+stderr text
 	 * When false: `LoopIteration.output` will be undefined (saves memory)
@@ -72,7 +84,7 @@ export interface LoopConfig {
 	 * When false: Output appears only after iteration completes
 	 *
 	 * Independent of `includeOutput` - controls display timing, not capture.
-	 * Note: NOT compatible with `sandbox=true` (will return error).
+	 * Note: For Claude executor, verbose mode is not compatible with `sandbox=true`.
 	 */
 	verbose?: boolean;
 	/**
@@ -105,10 +117,10 @@ export interface LoopIteration {
 	/** Duration of this iteration in milliseconds */
 	duration?: number;
 	/**
-	 * Full Claude output text
+	 * Full executor output text
 	 *
 	 * ONLY present when `LoopConfig.includeOutput=true`.
-	 * Contains concatenated stdout and stderr from Claude CLI execution.
+	 * Contains concatenated stdout and stderr from executor CLI execution.
 	 * May include ANSI color codes and tool call output.
 	 * Can be large - use `includeOutput=false` to save memory.
 	 */

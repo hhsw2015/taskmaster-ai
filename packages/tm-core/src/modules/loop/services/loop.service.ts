@@ -1,5 +1,5 @@
 /**
- * @fileoverview Loop Service - Orchestrates running Claude Code iterations (sandbox or CLI mode)
+ * @fileoverview Loop Service - Orchestrates running loop iterations via CLI executors
  */
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -9,6 +9,7 @@ import { getLogger } from '../../../common/logger/index.js';
 import { PRESETS, isPreset as checkIsPreset } from '../presets/index.js';
 import type {
 	LoopConfig,
+	LoopExecutor,
 	LoopIteration,
 	LoopOutputCallbacks,
 	LoopPreset,
@@ -36,8 +37,19 @@ export class LoopService {
 		return this._isRunning;
 	}
 
-	/** Check if Docker sandbox auth is ready */
-	checkSandboxAuth(): { ready: boolean; error?: string } {
+	/** Check if sandbox auth is ready */
+	checkSandboxAuth(executor: LoopExecutor = 'claude'): {
+		ready: boolean;
+		error?: string;
+	} {
+		if (executor !== 'claude') {
+			return {
+				ready: false,
+				error:
+					'Sandbox auth check is currently only supported for the Claude executor.'
+			};
+		}
+
 		const result = spawnSync(
 			'docker',
 			['sandbox', 'run', 'claude', '-p', 'Say OK'],
@@ -65,8 +77,19 @@ export class LoopService {
 		return { ready: output.toLowerCase().includes('ok') };
 	}
 
-	/** Run interactive Docker sandbox session for user authentication */
-	runInteractiveAuth(): { success: boolean; error?: string } {
+	/** Run interactive sandbox session for user authentication */
+	runInteractiveAuth(executor: LoopExecutor = 'claude'): {
+		success: boolean;
+		error?: string;
+	} {
+		if (executor !== 'claude') {
+			return {
+				success: false,
+				error:
+					'Interactive sandbox auth is currently only supported for the Claude executor.'
+			};
+		}
+
 		const result = spawnSync(
 			'docker',
 			[
@@ -112,8 +135,10 @@ export class LoopService {
 
 	/** Run a loop with the given configuration */
 	async run(config: LoopConfig): Promise<LoopResult> {
+		const executor = config.executor ?? 'claude';
+
 		// Validate incompatible options early - fail once, not per iteration
-		if (config.verbose && config.sandbox) {
+		if (config.verbose && config.sandbox && executor === 'claude') {
 			const errorMsg =
 				'Verbose mode is not supported with sandbox mode. Use --verbose without --sandbox, or remove --verbose.';
 			this.reportError(config.callbacks, errorMsg);
@@ -140,6 +165,7 @@ export class LoopService {
 			const iteration = await this.executeIteration(
 				prompt,
 				i,
+				executor,
 				config.sandbox ?? false,
 				config.includeOutput ?? false,
 				config.verbose ?? false,
@@ -272,8 +298,9 @@ export class LoopService {
 
 	private buildContextHeader(config: LoopConfig, iteration: number): string {
 		const tagInfo = config.tag ? ` (tag: ${config.tag})` : '';
+		const contextFile = config.executor === 'codex' ? 'AGENTS.md' : 'CLAUDE.md';
 		// Note: tasks.json reference removed - let the preset control task source to avoid confusion
-		return `@${config.progressFile} @CLAUDE.md
+		return `@${config.progressFile} @${contextFile}
 
 Loop iteration ${iteration} of ${config.iterations}${tagInfo}`;
 	}
@@ -308,19 +335,33 @@ Loop iteration ${iteration} of ${config.iterations}${tagInfo}`;
 	private async executeIteration(
 		prompt: string,
 		iterationNum: number,
+		executor: LoopExecutor,
 		sandbox: boolean,
 		includeOutput = false,
 		verbose = false,
 		callbacks?: LoopOutputCallbacks
 	): Promise<LoopIteration> {
 		const startTime = Date.now();
-		const command = sandbox ? 'docker' : 'claude';
+		const command = this.getCommand(executor, sandbox);
 
 		if (verbose) {
-			return this.executeVerboseIteration(
+			if (executor === 'claude') {
+				return this.executeVerboseIteration(
+					prompt,
+					iterationNum,
+					command,
+					sandbox,
+					includeOutput,
+					startTime,
+					callbacks
+				);
+			}
+
+			return this.executeGenericVerboseIteration(
 				prompt,
 				iterationNum,
 				command,
+				executor,
 				sandbox,
 				includeOutput,
 				startTime,
@@ -328,7 +369,7 @@ Loop iteration ${iteration} of ${config.iterations}${tagInfo}`;
 			);
 		}
 
-		const args = this.buildCommandArgs(prompt, sandbox, false);
+		const args = this.buildCommandArgs(prompt, executor, sandbox, false);
 		const result = spawnSync(command, args, {
 			cwd: this.projectRoot,
 			encoding: 'utf-8',
@@ -340,7 +381,8 @@ Loop iteration ${iteration} of ${config.iterations}${tagInfo}`;
 			const errorMessage = this.formatCommandError(
 				result.error,
 				command,
-				sandbox
+				sandbox,
+				executor
 			);
 			this.reportError(callbacks, errorMessage);
 			return this.createErrorIteration(iterationNum, startTime, errorMessage);
@@ -368,11 +410,11 @@ Loop iteration ${iteration} of ${config.iterations}${tagInfo}`;
 	}
 
 	/**
-	 * Execute an iteration with verbose output (shows Claude's work in real-time).
-	 * Uses Claude's stream-json format to display assistant messages as they arrive.
-	 * @param prompt - The prompt to send to Claude
+	 * Execute an iteration with verbose output (shows real-time work output).
+	 * For Claude, uses stream-json events for structured output parsing.
+	 * @param prompt - The prompt to send to the executor
 	 * @param iterationNum - Current iteration number (1-indexed)
-	 * @param command - The command to execute ('claude' or 'docker')
+	 * @param command - The command to execute
 	 * @param sandbox - Whether running in Docker sandbox mode
 	 * @param includeOutput - Whether to include full output in the result
 	 * @param startTime - Timestamp when iteration started (for duration calculation)
@@ -388,7 +430,7 @@ Loop iteration ${iteration} of ${config.iterations}${tagInfo}`;
 		startTime: number,
 		callbacks?: LoopOutputCallbacks
 	): Promise<LoopIteration> {
-		const args = this.buildCommandArgs(prompt, sandbox, true);
+		const args = this.buildCommandArgs(prompt, 'claude', sandbox, true);
 
 		return new Promise((resolve) => {
 			// Prevent multiple resolutions from race conditions between error/close events
@@ -482,7 +524,12 @@ Loop iteration ${iteration} of ${config.iterations}${tagInfo}`;
 			});
 
 			child.on('error', (error: NodeJS.ErrnoException) => {
-				const errorMessage = this.formatCommandError(error, command, sandbox);
+				const errorMessage = this.formatCommandError(
+					error,
+					command,
+					sandbox,
+					'claude'
+				);
 				this.reportError(callbacks, errorMessage);
 
 				// Cleanup: remove listeners and kill process if still running
@@ -529,6 +576,86 @@ Loop iteration ${iteration} of ${config.iterations}${tagInfo}`;
 	}
 
 	/**
+	 * Execute verbose iteration for non-Claude executors by streaming raw stdout/stderr.
+	 */
+	private executeGenericVerboseIteration(
+		prompt: string,
+		iterationNum: number,
+		command: string,
+		executor: LoopExecutor,
+		sandbox: boolean,
+		includeOutput: boolean,
+		startTime: number,
+		callbacks?: LoopOutputCallbacks
+	): Promise<LoopIteration> {
+		const args = this.buildCommandArgs(prompt, executor, sandbox, true);
+
+		return new Promise((resolve) => {
+			let isResolved = false;
+			let combinedOutput = '';
+			const resolveOnce = (result: LoopIteration): void => {
+				if (!isResolved) {
+					isResolved = true;
+					resolve(result);
+				}
+			};
+
+			const child = spawn(command, args, {
+				cwd: this.projectRoot,
+				stdio: ['inherit', 'pipe', 'pipe']
+			});
+
+			child.stdout?.on('data', (data: Buffer) => {
+				const text = data.toString('utf-8');
+				combinedOutput += text;
+				callbacks?.onText?.(text);
+			});
+
+			child.stderr?.on('data', (data: Buffer) => {
+				const text = data.toString('utf-8');
+				combinedOutput += text;
+				callbacks?.onStderr?.(iterationNum, text);
+			});
+
+			child.on('error', (error: NodeJS.ErrnoException) => {
+				const errorMessage = this.formatCommandError(
+					error,
+					command,
+					sandbox,
+					executor
+				);
+				this.reportError(callbacks, errorMessage);
+				resolveOnce(
+					this.createErrorIteration(iterationNum, startTime, errorMessage)
+				);
+			});
+
+			child.on('close', (exitCode: number | null) => {
+				if (exitCode === null) {
+					const errorMsg = 'Command terminated abnormally (no exit code)';
+					this.reportError(callbacks, errorMsg);
+					resolveOnce(
+						this.createErrorIteration(iterationNum, startTime, errorMsg)
+					);
+					return;
+				}
+
+				const { status, message } = this.parseCompletion(
+					combinedOutput,
+					exitCode
+				);
+				resolveOnce({
+					iteration: iterationNum,
+					status,
+					duration: Date.now() - startTime,
+					message,
+					...(includeOutput && { output: combinedOutput })
+				});
+			});
+		});
+	}
+
+	/**
 	 * Validate that a parsed JSON object has the expected stream event structure.
 	 */
 	private isValidStreamEvent(event: unknown): event is {
@@ -561,13 +688,31 @@ Loop iteration ${iteration} of ${config.iterations}${tagInfo}`;
 		return true;
 	}
 
+	private getCommand(executor: LoopExecutor, sandbox: boolean): string {
+		if (sandbox && executor === 'claude') {
+			return 'docker';
+		}
+		return executor;
+	}
+
 	private buildCommandArgs(
 		prompt: string,
+		executor: LoopExecutor,
 		sandbox: boolean,
 		verbose: boolean
 	): string[] {
-		if (sandbox) {
+		if (sandbox && executor === 'claude') {
 			return ['sandbox', 'run', 'claude', '-p', prompt];
+		}
+
+		if (executor === 'codex') {
+			const args = ['exec'];
+			if (sandbox) {
+				// For Codex, map Task Master's --sandbox to Codex native sandbox mode.
+				args.push('--sandbox', 'workspace-write');
+			}
+			args.push(prompt);
+			return args;
 		}
 
 		const args = ['-p', prompt, '--dangerously-skip-permissions'];
@@ -581,11 +726,16 @@ Loop iteration ${iteration} of ${config.iterations}${tagInfo}`;
 	private formatCommandError(
 		error: NodeJS.ErrnoException,
 		command: string,
-		sandbox: boolean
+		sandbox: boolean,
+		executor: LoopExecutor
 	): string {
 		if (error.code === 'ENOENT') {
-			return sandbox
-				? 'Docker is not installed. Install Docker Desktop to use --sandbox mode.'
+			if (sandbox && executor === 'claude') {
+				return 'Docker is not installed. Install Docker Desktop to use --sandbox mode.';
+			}
+
+			return executor === 'codex'
+				? 'Codex CLI is not installed. Install with: npm install -g @openai/codex'
 				: 'Claude CLI is not installed. Install with: npm install -g @anthropic-ai/claude-code';
 		}
 

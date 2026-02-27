@@ -5,6 +5,7 @@
 import path from 'node:path';
 import {
 	type LoopConfig,
+	type LoopExecutor,
 	type LoopIteration,
 	type LoopOutputCallbacks,
 	type LoopResult,
@@ -25,6 +26,7 @@ export interface LoopCommandOptions {
 	tag?: string;
 	project?: string;
 	sandbox?: boolean;
+	executor?: string;
 	output?: boolean;
 	verbose?: boolean;
 }
@@ -35,7 +37,7 @@ export class LoopCommand extends Command {
 	constructor(name?: string) {
 		super(name || 'loop');
 
-		this.description('Run Claude Code in a loop, one task per iteration')
+		this.description('Run coding agent CLI in a loop, one task per iteration')
 			.option('-n, --iterations <number>', 'Maximum iterations')
 			.option(
 				'-p, --prompt <preset|path>',
@@ -52,12 +54,16 @@ export class LoopCommand extends Command {
 				'--project <path>',
 				'Project root directory (auto-detected if not provided)'
 			)
-			.option('--sandbox', 'Run Claude in Docker sandbox mode')
+			.option(
+				'--sandbox',
+				'Enable sandbox mode (Docker for Claude, native sandbox for Codex)'
+			)
+			.option('-e, --executor <executor>', 'Execution backend (claude|codex)')
 			.option(
 				'--no-output',
-				'Exclude full Claude output from iteration results'
+				'Exclude full executor output from iteration results'
 			)
-			.option('-v, --verbose', "Show Claude's work in real-time")
+			.option('-v, --verbose', "Show executor's work in real-time")
 			.action((options: LoopCommandOptions) => this.execute(options));
 	}
 
@@ -68,6 +74,7 @@ export class LoopCommand extends Command {
 		try {
 			const projectRoot = path.resolve(getProjectRoot(options.project));
 			this.tmCore = await createTmCore({ projectPath: projectRoot });
+			const executor = this.resolveExecutor(options.executor);
 
 			// Get pending task count for default preset iteration resolution
 			const pendingTaskCount =
@@ -93,14 +100,32 @@ export class LoopCommand extends Command {
 
 			// Only check sandbox auth when --sandbox flag is used
 			if (options.sandbox) {
-				this.handleSandboxAuth();
+				if (executor === 'claude') {
+					this.handleSandboxAuth(executor);
+				} else {
+					console.log(
+						chalk.dim(
+							'Using Codex native sandbox mode (workspace-write) for loop execution.'
+						)
+					);
+				}
 			}
 
 			console.log(chalk.cyan('Starting Task Master Loop...'));
 			console.log(chalk.dim(`Preset: ${prompt}`));
 			console.log(chalk.dim(`Max iterations: ${iterations}`));
 			console.log(
-				chalk.dim(`Mode: ${options.sandbox ? 'Docker sandbox' : 'Claude CLI'}`)
+				chalk.dim(
+					`Mode: ${
+						options.sandbox
+							? executor === 'codex'
+								? 'Codex sandbox (workspace-write)'
+								: 'Docker sandbox (Claude)'
+							: executor === 'codex'
+								? 'Codex CLI'
+								: 'Claude CLI'
+					}`
+				)
 			);
 
 			// Show next task only for default preset (other presets don't use Task Master tasks)
@@ -126,6 +151,7 @@ export class LoopCommand extends Command {
 				prompt,
 				progressFile,
 				tag: options.tag,
+				executor,
 				sandbox: options.sandbox,
 				// CLI defaults to including output (users typically want to see it)
 				// Domain defaults to false (library consumers opt-in explicitly)
@@ -143,9 +169,9 @@ export class LoopCommand extends Command {
 		}
 	}
 
-	private handleSandboxAuth(): void {
+	private handleSandboxAuth(executor: LoopExecutor): void {
 		console.log(chalk.dim('Checking sandbox auth...'));
-		const authCheck = this.tmCore.loop.checkSandboxAuth();
+		const authCheck = this.tmCore.loop.checkSandboxAuth(executor);
 
 		if (authCheck.error) {
 			throw new Error(authCheck.error);
@@ -163,11 +189,104 @@ export class LoopCommand extends Command {
 		);
 		console.log(chalk.dim('Please complete auth, then Ctrl+C to continue.\n'));
 
-		const authResult = this.tmCore.loop.runInteractiveAuth();
+		const authResult = this.tmCore.loop.runInteractiveAuth(executor);
 		if (!authResult.success) {
 			throw new Error(authResult.error || 'Interactive authentication failed');
 		}
 		console.log(chalk.green('✓ Auth complete\n'));
+	}
+
+	private resolveExecutor(optionValue?: string): LoopExecutor {
+		const configExecutor = this.getConfiguredExecutor();
+		const inferredExecutor = this.inferExecutorFromConfig();
+		const executorValue =
+			optionValue ??
+			process.env.TASKMASTER_EXECUTOR ??
+			configExecutor ??
+			inferredExecutor ??
+			'claude';
+		const normalized = executorValue.toLowerCase();
+
+		if (normalized === 'claude' || normalized === 'codex') {
+			return normalized;
+		}
+
+		throw new Error(
+			`Invalid executor "${executorValue}". Supported values: claude, codex.`
+		);
+	}
+
+	private getConfiguredExecutor(): string | undefined {
+		const config = this.tmCore.config.getConfig();
+		const customConfig = config.custom as Record<string, unknown> | undefined;
+		const configuredExecutor = customConfig?.executor;
+		return typeof configuredExecutor === 'string'
+			? configuredExecutor
+			: undefined;
+	}
+
+	private inferExecutorFromConfig(): LoopExecutor | undefined {
+		const config = this.tmCore.config.getConfig() as Record<string, unknown>;
+
+		// Legacy/new config compatibility: explicit provider field on root
+		if (this.isCodexProvider(config.aiProvider)) {
+			return 'codex';
+		}
+
+		// Common config structure: models.main can be a string model id or object with provider/modelId
+		const models = this.asObject(config.models);
+		if (this.isCodexModelConfig(models?.main)) {
+			return 'codex';
+		}
+
+		// If codexCli settings are explicitly present, prefer Codex executor by default
+		if (this.isNonEmptyObject(config.codexCli)) {
+			return 'codex';
+		}
+
+		return undefined;
+	}
+
+	private isCodexModelConfig(value: unknown): boolean {
+		if (typeof value === 'string') {
+			return this.isCodexModelId(value);
+		}
+
+		const modelConfig = this.asObject(value);
+		if (!modelConfig) return false;
+
+		return (
+			this.isCodexProvider(modelConfig.provider) ||
+			this.isCodexModelId(modelConfig.modelId)
+		);
+	}
+
+	private isCodexProvider(provider: unknown): boolean {
+		if (typeof provider !== 'string') return false;
+		const normalized = provider.trim().toLowerCase();
+		return (
+			normalized === 'codex' ||
+			normalized === 'codex-cli' ||
+			normalized === 'codex-lb'
+		);
+	}
+
+	private isCodexModelId(modelId: unknown): boolean {
+		return (
+			typeof modelId === 'string' && modelId.toLowerCase().includes('codex')
+		);
+	}
+
+	private asObject(value: unknown): Record<string, unknown> | undefined {
+		if (typeof value === 'object' && value !== null) {
+			return value as Record<string, unknown>;
+		}
+		return undefined;
+	}
+
+	private isNonEmptyObject(value: unknown): boolean {
+		const obj = this.asObject(value);
+		return Boolean(obj && Object.keys(obj).length > 0);
 	}
 
 	private validateIterations(iterations: string): void {

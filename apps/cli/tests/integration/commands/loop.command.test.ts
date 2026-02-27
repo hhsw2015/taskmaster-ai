@@ -3,7 +3,7 @@
  *
  * Tests the loop command's CLI integration including option parsing,
  * validation errors, and help text. Note: The loop command spawns
- * Claude Code which is not available in test environments, so these
+ * an external coding agent CLI which is not available in test environments, so these
  * tests focus on pre-execution validation and CLI structure.
  *
  * @integration
@@ -73,13 +73,13 @@ describe('loop command', () => {
 	});
 
 	const runLoop = (args = ''): { output: string; exitCode: number } => {
-		try {
-			const output = execSync(`node "${binPath}" loop ${args}`, {
-				encoding: 'utf-8',
-				stdio: 'pipe',
-				timeout: 5000, // Short timeout since we can't actually run claude
-				env: { ...process.env, TASKMASTER_SKIP_AUTO_UPDATE: '1' }
-			});
+			try {
+				const output = execSync(`node "${binPath}" loop ${args}`, {
+					encoding: 'utf-8',
+					stdio: 'pipe',
+					timeout: 5000, // Short timeout since we can't actually run the executor
+					env: { ...process.env, TASKMASTER_SKIP_AUTO_UPDATE: '1' }
+				});
 			return { output, exitCode: 0 };
 		} catch (error: any) {
 			return {
@@ -117,7 +117,7 @@ describe('loop command', () => {
 			const { output, exitCode } = runHelp();
 
 			expect(exitCode).toBe(0);
-			expect(output.toLowerCase()).toContain('claude');
+			expect(output.toLowerCase()).toContain('coding agent');
 			expect(output.toLowerCase()).toContain('loop');
 		});
 	});
@@ -166,6 +166,13 @@ describe('loop command', () => {
 
 			expect(exitCode).toBe(0);
 			expect(output).toContain('--project');
+		});
+
+		it('should show --executor option in help', () => {
+			const { output, exitCode } = runHelp();
+
+			expect(exitCode).toBe(0);
+			expect(output).toContain('--executor');
 		});
 	});
 

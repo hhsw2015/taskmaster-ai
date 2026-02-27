@@ -29,6 +29,8 @@ const REASONING_EFFORT_SUPPORT = {
 	'gpt-5.1-codex-max': ['none', 'low', 'medium', 'high', 'xhigh'],
 	// GPT-5.2 supports full range
 	'gpt-5.2': ['none', 'low', 'medium', 'high', 'xhigh'],
+	// GPT-5.3 Codex supports full range
+	'gpt-5.3-codex': ['none', 'low', 'medium', 'high', 'xhigh'],
 	// GPT-5.2 Pro only supports medium and above
 	'gpt-5.2-pro': ['medium', 'high', 'xhigh'],
 	// GPT-5 supports full range

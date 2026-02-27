@@ -6,12 +6,15 @@
 import type { Task } from '../../../common/types/index.js';
 import type { TaskService } from './task-service.js';
 
+export type TaskExecutor = 'claude' | 'codex';
+
 export interface StartTaskOptions {
 	subtaskId?: string;
 	dryRun?: boolean;
 	updateStatus?: boolean;
 	force?: boolean;
 	silent?: boolean;
+	executor?: TaskExecutor;
 }
 
 export interface StartTaskResult {
@@ -99,10 +102,11 @@ export class TaskExecutionService {
 			let started = false;
 			let executionOutput = 'Task ready to execute';
 			let command = undefined;
+			const executor = this.normalizeExecutor(options.executor);
 
 			if (!options.dryRun) {
 				// Prepare the command for execution by the CLI
-				command = await this.prepareExecutionCommand(task, subtask);
+				command = await this.prepareExecutionCommand(task, subtask, executor);
 				started = !!command; // Command prepared successfully
 				executionOutput = command
 					? `Command prepared: ${command.executable} ${command.args.join(' ')}`
@@ -112,7 +116,7 @@ export class TaskExecutionService {
 				started = true;
 				executionOutput = 'Dry run - task would be executed';
 				// Also prepare command for dry run display
-				command = await this.prepareExecutionCommand(task, subtask);
+				command = await this.prepareExecutionCommand(task, subtask, executor);
 			}
 
 			return {
@@ -234,15 +238,14 @@ export class TaskExecutionService {
 	 */
 	private async prepareExecutionCommand(
 		task: Task,
-		subtask?: any
+		subtask?: any,
+		executor: TaskExecutor = 'claude'
 	): Promise<{ executable: string; args: string[]; cwd: string } | null> {
 		try {
 			// Format the task into a prompt
 			const taskPrompt = this.formatTaskPrompt(task, subtask);
-
-			// Use claude command - could be extended for other executors
-			const executable = 'claude';
-			const args = [taskPrompt];
+			const executable = executor;
+			const args = this.getExecutionArgs(executor, taskPrompt);
 			const cwd = process.cwd(); // or could get from project root
 
 			return { executable, args, cwd };
@@ -252,6 +255,30 @@ export class TaskExecutionService {
 			);
 			return null;
 		}
+	}
+
+	private normalizeExecutor(executor?: string): TaskExecutor {
+		if (!executor) {
+			return 'claude';
+		}
+
+		const normalized = executor.toLowerCase();
+		if (normalized === 'claude' || normalized === 'codex') {
+			return normalized;
+		}
+
+		console.warn(
+			`Unknown executor "${executor}", defaulting to "claude". Supported executors: claude, codex.`
+		);
+		return 'claude';
+	}
+
+	private getExecutionArgs(executor: TaskExecutor, taskPrompt: string): string[] {
+		if (executor === 'codex') {
+			// Use interactive Codex mode for "start" flows, mirroring Claude interactive behavior.
+			return [taskPrompt];
+		}
+		return [taskPrompt];
 	}
 
 	/**

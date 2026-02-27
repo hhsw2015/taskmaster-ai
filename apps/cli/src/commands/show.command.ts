@@ -3,7 +3,7 @@
  * Extends Commander.Command for better integration with the framework
  */
 
-import { type Task, type TmCore, createTmCore, TaskIdSchema } from '@tm/core';
+import { type Task, TaskIdSchema, type TmCore, createTmCore } from '@tm/core';
 import type { StorageType, Subtask } from '@tm/core';
 import boxen from 'boxen';
 import chalk from 'chalk';
