@@ -103,11 +103,12 @@ const sanitizeIntegerConstraints = (schema) => {
 };
 
 /**
- * Ensures strict object schemas include `additionalProperties: false` when
- * an object defines explicit `properties` but omits the field.
+ * Enforces strict object-schema invariants required by some providers:
+ * 1) `additionalProperties: false` when explicit `properties` are present
+ * 2) `required` must include every key from `properties`
  *
- * This avoids provider/runtime differences where nested objects inside unions
- * may lose `additionalProperties` during JSON schema generation.
+ * This normalizes runtime differences across ai/zod versions where optional
+ * fields may be omitted from `required` in generated JSON schema.
  */
 const enforceStrictObjectSchemas = (schema) => {
 	if (!schema || typeof schema !== 'object') {
@@ -132,9 +133,22 @@ const enforceStrictObjectSchemas = (schema) => {
 		next,
 		'additionalProperties'
 	);
+	const propertyKeys = hasPropertiesObject ? Object.keys(next.properties) : [];
+	const hasRequiredArray = Array.isArray(next.required);
+	const requiredSet = hasRequiredArray ? new Set(next.required) : new Set();
+	const hasAllRequiredKeys =
+		hasRequiredArray &&
+		propertyKeys.every((key) => requiredSet.has(key)) &&
+		next.required.length === propertyKeys.length;
 
 	if (hasTypedObject && hasPropertiesObject && !hasAdditionalProperties) {
 		next.additionalProperties = false;
+	}
+
+	if (hasTypedObject && hasPropertiesObject && !hasAllRequiredKeys) {
+		// Strict JSON schema mode expects every declared property to be listed
+		// in `required`; nullable unions represent optional semantics.
+		next.required = propertyKeys;
 	}
 
 	return next;

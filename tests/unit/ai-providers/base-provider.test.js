@@ -529,6 +529,56 @@ describe('BaseAIProvider', () => {
 					.additionalProperties
 			).toBe(false);
 		});
+
+		it('should enforce required to include all object property keys', async () => {
+			mockGenerateObject.mockResolvedValue({
+				object: { tasks: [], metadata: null },
+				usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 }
+			});
+
+			const schemaWithMissingRequiredMetadata = {
+				jsonSchema: {
+					type: 'object',
+					properties: {
+						tasks: { type: 'array', items: { type: 'string' } },
+						metadata: {
+							anyOf: [
+								{
+									type: 'object',
+									properties: {
+										projectName: { type: 'string' },
+										totalTasks: { type: 'number' }
+									},
+									required: ['projectName'],
+									additionalProperties: false
+								},
+								{ type: 'null' }
+							]
+						}
+					},
+					required: ['tasks'],
+					additionalProperties: false
+				},
+				validate: jest.fn()
+			};
+
+			await testProvider.generateObject({
+				apiKey: 'key',
+				modelId: 'model',
+				messages: [{ role: 'user', content: 'test' }],
+				schema: schemaWithMissingRequiredMetadata,
+				objectName: 'TestObject'
+			});
+
+			const generatedSchema = mockGenerateObject.mock.calls[0][0].schema;
+			expect(generatedSchema.jsonSchema.required).toEqual([
+				'tasks',
+				'metadata'
+			]);
+			expect(
+				generatedSchema.jsonSchema.properties.metadata.anyOf[0].required
+			).toEqual(['projectName', 'totalTasks']);
+		});
 	});
 
 	describe('8. Integration Points - Client Creation', () => {
