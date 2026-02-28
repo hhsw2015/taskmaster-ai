@@ -92,6 +92,33 @@ describe('CodexCliProvider', () => {
 		expect(getCodexCliSettingsForCommand).toHaveBeenCalledWith('parse-prd');
 	});
 
+	it('prefers detected system codex path when available and codexPath is not set', async () => {
+		provider._codexCliChecked = true;
+		provider._codexCliAvailable = true;
+		provider._preferredCodexPath = '/usr/local/lib/node_modules/@openai/codex/bin/codex.js';
+
+		await provider.getClient({ commandName: 'parse-prd' });
+
+		const call = createCodexCli.mock.calls[0][0];
+		expect(call.defaultSettings.codexPath).toBe(
+			'/usr/local/lib/node_modules/@openai/codex/bin/codex.js'
+		);
+	});
+
+	it('does not override explicit codexPath from config', async () => {
+		getCodexCliSettingsForCommand.mockReturnValueOnce({
+			codexPath: '/custom/codex',
+			allowNpx: true
+		});
+		provider._codexCliChecked = true;
+		provider._codexCliAvailable = true;
+
+		await provider.getClient({ commandName: 'parse-prd' });
+
+		const call = createCodexCli.mock.calls[0][0];
+		expect(call.defaultSettings.codexPath).toBe('/custom/codex');
+	});
+
 	it('injects OPENAI_API_KEY only when apiKey provided', async () => {
 		const client = await provider.getClient({
 			commandName: 'expand',

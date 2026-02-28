@@ -7,6 +7,8 @@
  */
 
 import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 import { createCodexCli } from 'ai-sdk-provider-codex-cli';
 import {
 	getCodexCliSettingsForCommand,
@@ -65,6 +67,7 @@ export class CodexCliProvider extends BaseAIProvider {
 		// CLI availability check cache
 		this._codexCliChecked = false;
 		this._codexCliAvailable = null;
+		this._preferredCodexPath = null;
 	}
 
 	/**
@@ -96,8 +99,10 @@ export class CodexCliProvider extends BaseAIProvider {
 			try {
 				execSync('codex --version', { stdio: 'pipe', timeout: 1000 });
 				this._codexCliAvailable = true;
+				this._preferredCodexPath = this._detectSystemCodexPath();
 			} catch (error) {
 				this._codexCliAvailable = false;
+				this._preferredCodexPath = null;
 				log(
 					'warn',
 					'Codex CLI not detected. Install with: npm i -g @openai/codex or enable fallback with allowNpx.'
@@ -106,6 +111,85 @@ export class CodexCliProvider extends BaseAIProvider {
 				this._codexCliChecked = true;
 			}
 		}
+	}
+
+	/**
+	 * Detects a system/global codex JS entrypoint path.
+	 * Using a JS entrypoint keeps compatibility with older ai-sdk-provider-codex-cli
+	 * versions that execute explicit `codexPath` as `node <path>`.
+	 *
+	 * @returns {string|null} Absolute path to codex.js when found, otherwise null
+	 */
+	_detectSystemCodexPath() {
+		try {
+			const npmGlobalRoot = execSync('npm root -g', {
+				stdio: ['ignore', 'pipe', 'ignore'],
+				timeout: 1000
+			})
+				.toString()
+				.trim();
+			const globalCodexJs = path.join(
+				npmGlobalRoot,
+				'@openai',
+				'codex',
+				'bin',
+				'codex.js'
+			);
+			if (fs.existsSync(globalCodexJs)) {
+				return globalCodexJs;
+			}
+		} catch {
+			// Fall through
+		}
+
+		try {
+			const codexOnPath = execSync('command -v codex', {
+				stdio: ['ignore', 'pipe', 'ignore'],
+				timeout: 1000
+			})
+				.toString()
+				.trim();
+			if (codexOnPath.endsWith('.js') && fs.existsSync(codexOnPath)) {
+				return codexOnPath;
+			}
+		} catch {
+			// Fall through
+		}
+
+		return null;
+	}
+
+	/**
+	 * Resolve codex executable preference.
+	 * Priority:
+	 * 1) User-configured codexPath
+	 * 2) System codex on PATH (preferred default)
+	 * 3) Provider internal fallback resolution (bundled/npx)
+	 *
+	 * @param {object} settings - Codex CLI settings from config
+	 * @returns {object} settings with codexPath injected when system codex is available
+	 */
+	_resolveExecutableSettings(settings) {
+		// Respect explicit user configuration first.
+		if (settings?.codexPath) {
+			return settings;
+		}
+
+		// Reuse validateAuth detection cache in non-test runtime.
+		if (!this._codexCliChecked) {
+			this.validateAuth();
+		}
+
+		if (this._codexCliAvailable) {
+			const preferredCodexPath =
+				this._preferredCodexPath || this._detectSystemCodexPath();
+			if (preferredCodexPath) {
+				this._preferredCodexPath = preferredCodexPath;
+				return { ...settings, codexPath: preferredCodexPath };
+			}
+		}
+
+		return settings;
 	}
 
 	/**
@@ -162,7 +246,9 @@ export class CodexCliProvider extends BaseAIProvider {
 	getClient(params = {}) {
 		try {
 			// Merge global + command-specific settings from config
-			const settings = getCodexCliSettingsForCommand(params.commandName) || {};
+			const rawSettings =
+				getCodexCliSettingsForCommand(params.commandName) || {};
+			const settings = this._resolveExecutableSettings(rawSettings);
 
 			// Get validated reasoningEffort - always pass to override Codex CLI global config
 			const validatedReasoningEffort = this._getValidatedReasoningEffort(
