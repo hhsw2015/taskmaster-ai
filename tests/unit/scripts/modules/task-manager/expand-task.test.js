@@ -239,9 +239,10 @@ const { generateObjectService } = await import(
 	'../../../../../scripts/modules/ai-services-unified.js'
 );
 
-const { getDefaultSubtasks } = await import(
+const { getDefaultSubtasks, getMainProvider, getResearchProvider } =
+	await import(
 	'../../../../../scripts/modules/config-manager.js'
-);
+	);
 
 const { tryExpandViaRemote } = await import('@tm/bridge');
 
@@ -1406,6 +1407,23 @@ describe('expandTask', () => {
 					report: expect.any(Function)
 				})
 			);
+		});
+
+		test('should skip remote bridge when active provider is local codex-cli', async () => {
+			// Arrange
+			getMainProvider.mockReturnValue('codex-cli');
+			getResearchProvider.mockReturnValue('codex-cli');
+			tryExpandViaRemote.mockResolvedValue({
+				success: true,
+				message: 'should not be used'
+			});
+
+			// Act
+			await expandTask(tasksPath, taskId, 2, false, '', context, false);
+
+			// Assert
+			expect(tryExpandViaRemote).not.toHaveBeenCalled();
+			expect(generateObjectService).toHaveBeenCalled();
 		});
 	});
 });

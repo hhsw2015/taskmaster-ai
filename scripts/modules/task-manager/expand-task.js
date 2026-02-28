@@ -16,6 +16,8 @@ import { createBridgeLogger } from '../bridge-utils.js';
 import {
 	getDebugFlag,
 	getDefaultSubtasks,
+	getMainProvider,
+	getResearchProvider,
 	hasCodebaseAnalysis
 } from '../config-manager.js';
 import { getPromptManager } from '../prompt-manager.js';
@@ -71,23 +73,40 @@ async function expandTask(
 	}
 
 	try {
-		// --- BRIDGE: Try remote expansion first (API storage) ---
-		const remoteResult = await tryExpandViaRemote({
-			taskId,
-			numSubtasks,
-			useResearch,
-			additionalContext,
-			force,
-			projectRoot,
-			tag,
-			isMCP,
-			outputFormat,
-			report
-		});
+		// --- BRIDGE: Try remote expansion first (API storage), unless local CLI provider is active ---
+		const activeProvider = useResearch
+			? getResearchProvider(projectRoot)
+			: getMainProvider(projectRoot);
+		const localCliProviders = new Set([
+			'claude-code',
+			'gemini-cli',
+			'grok-cli',
+			'codex-cli'
+		]);
+		const shouldSkipRemoteBridge = localCliProviders.has(activeProvider);
 
-		// If remote handled it, return the result
-		if (remoteResult) {
-			return remoteResult;
+		if (shouldSkipRemoteBridge) {
+			logger.info(
+				`Skipping remote expansion bridge for local CLI provider: ${activeProvider}`
+			);
+		} else {
+			const remoteResult = await tryExpandViaRemote({
+				taskId,
+				numSubtasks,
+				useResearch,
+				additionalContext,
+				force,
+				projectRoot,
+				tag,
+				isMCP,
+				outputFormat,
+				report
+			});
+
+			// If remote handled it, return the result
+			if (remoteResult) {
+				return remoteResult;
+			}
 		}
 		// Otherwise fall through to file-based logic below
 		// --- End BRIDGE ---
