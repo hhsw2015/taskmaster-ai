@@ -118,40 +118,46 @@ const MOCK_CONFIG_PATH = path.join(
 const DEFAULT_CONFIG = {
 	models: {
 		main: {
-			provider: 'anthropic',
-			modelId: 'claude-sonnet-4-20250514',
-			maxTokens: 64000,
+			provider: 'codex-cli',
+			modelId: 'gpt-5.3-codex',
+			maxTokens: 32000,
 			temperature: 0.2
 		},
 		research: {
-			provider: 'perplexity',
-			modelId: 'sonar',
-			maxTokens: 8700,
+			provider: 'codex-cli',
+			modelId: 'gpt-5.3-codex',
+			maxTokens: 32000,
 			temperature: 0.1
 		},
 		fallback: {
-			provider: 'anthropic',
-			modelId: 'claude-3-7-sonnet-20250219',
-			maxTokens: 120000,
+			provider: 'codex-cli',
+			modelId: 'gpt-5.3-codex',
+			maxTokens: 32000,
 			temperature: 0.2
 		}
 	},
-	global: {
-		anonymousTelemetry: true,
-		logLevel: 'info',
-		debug: false,
+		global: {
+			anonymousTelemetry: true,
+			logLevel: 'info',
+			debug: false,
 		defaultNumTasks: 10,
 		defaultSubtasks: 5,
 		defaultPriority: 'medium',
 		projectName: 'Task Master',
-		ollamaBaseURL: 'http://localhost:11434/api',
-		bedrockBaseURL: 'https://bedrock.us-east-1.amazonaws.com',
-		enableCodebaseAnalysis: true,
-		enableProxy: false,
-		responseLanguage: 'English'
+			ollamaBaseURL: 'http://localhost:11434/api',
+			bedrockBaseURL: 'https://bedrock.us-east-1.amazonaws.com',
+			enableCodebaseAnalysis: true,
+			enableProxy: false,
+			responseLanguage: 'Chinese'
 	},
 	claudeCode: {},
-	codexCli: {},
+	codexCli: {
+		approvalMode: 'never',
+		sandboxMode: 'danger-full-access',
+		fullAuto: true,
+		skipGitRepoCheck: true,
+		reasoningEffort: 'xhigh'
+	},
 	grokCli: {
 		timeout: 120000,
 		workingDirectory: null,
@@ -1006,7 +1012,7 @@ describe('Getter Functions', () => {
 			configManager.getResponseLanguage(MOCK_PROJECT_ROOT);
 
 		// Assert
-		expect(responseLanguage).toBe('English');
+		expect(responseLanguage).toBe('Chinese');
 	});
 
 	// Add more tests for other getters (getResearchProvider, getProjectName, etc.)

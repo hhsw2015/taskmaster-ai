@@ -52,7 +52,11 @@ function setResponseLanguage(lang, options = {}) {
 
 	try {
 		const currentConfig = getConfig(projectRoot);
-		currentConfig.global.responseLanguage = lang;
+		const normalizedLang = lang.trim();
+		if (!currentConfig.global) {
+			currentConfig.global = {};
+		}
+		currentConfig.global.responseLanguage = normalizedLang;
 		const writeResult = writeConfig(currentConfig, projectRoot);
 
 		if (!writeResult) {
@@ -68,8 +72,8 @@ function setResponseLanguage(lang, options = {}) {
 		return {
 			success: true,
 			data: {
-				responseLanguage: lang,
-				message: successMessage
+				responseLanguage: normalizedLang,
+				message: `Response language set to ${normalizedLang}`
 			}
 		};
 	} catch (error) {

@@ -27,41 +27,46 @@ const __dirname = path.dirname(__filename);
 const DEFAULTS = {
 	models: {
 		main: {
-			provider: 'anthropic',
-			modelId: 'claude-sonnet-4-20250514',
-			maxTokens: 64000,
+			provider: 'codex-cli',
+			modelId: 'gpt-5.3-codex',
+			maxTokens: 32000,
 			temperature: 0.2
 		},
 		research: {
-			provider: 'perplexity',
-			modelId: 'sonar',
-			maxTokens: 8700,
+			provider: 'codex-cli',
+			modelId: 'gpt-5.3-codex',
+			maxTokens: 32000,
 			temperature: 0.1
 		},
 		fallback: {
-			// No default fallback provider/model initially
-			provider: 'anthropic',
-			modelId: 'claude-3-7-sonnet-20250219',
-			maxTokens: 120000, // Default parameters if fallback IS configured
+			provider: 'codex-cli',
+			modelId: 'gpt-5.3-codex',
+			maxTokens: 32000,
 			temperature: 0.2
 		}
 	},
-	global: {
-		logLevel: 'info',
-		debug: false,
-		defaultNumTasks: 10,
-		defaultSubtasks: 5,
-		defaultPriority: 'medium',
-		projectName: 'Task Master',
-		ollamaBaseURL: 'http://localhost:11434/api',
-		bedrockBaseURL: 'https://bedrock.us-east-1.amazonaws.com',
-		responseLanguage: 'English',
-		enableCodebaseAnalysis: true,
-		enableProxy: false,
-		anonymousTelemetry: true // Allow users to opt out of Sentry telemetry for local storage
-	},
+		global: {
+			logLevel: 'info',
+			debug: false,
+			defaultNumTasks: 10,
+			defaultSubtasks: 5,
+			defaultPriority: 'medium',
+			projectName: 'Task Master',
+			ollamaBaseURL: 'http://localhost:11434/api',
+			bedrockBaseURL: 'https://bedrock.us-east-1.amazonaws.com',
+			responseLanguage: 'Chinese',
+			enableCodebaseAnalysis: true,
+			enableProxy: false,
+			anonymousTelemetry: true // Allow users to opt out of Sentry telemetry for local storage
+		},
 	claudeCode: {},
-	codexCli: {},
+	codexCli: {
+		approvalMode: 'never',
+		sandboxMode: 'danger-full-access',
+		fullAuto: true,
+		skipGitRepoCheck: true,
+		reasoningEffort: 'xhigh'
+	},
 	grokCli: {
 		timeout: 120000,
 		workingDirectory: null,

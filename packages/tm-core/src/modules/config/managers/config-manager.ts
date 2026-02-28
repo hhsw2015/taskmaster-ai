@@ -179,7 +179,7 @@ export class ConfigManager {
 	 */
 	getResponseLanguage(): string {
 		const customConfig = this.config.custom as any;
-		return customConfig?.responseLanguage || 'English';
+		return customConfig?.responseLanguage || 'Chinese';
 	}
 
 	/**

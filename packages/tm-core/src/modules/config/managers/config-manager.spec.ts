@@ -231,7 +231,7 @@ describe('ConfigManager', () => {
 
 		it('should return response language', () => {
 			const language = manager.getResponseLanguage();
-			expect(language).toBe('English');
+			expect(language).toBe('Chinese');
 		});
 
 		it('should return custom response language', () => {

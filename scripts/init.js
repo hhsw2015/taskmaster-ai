@@ -375,16 +375,16 @@ async function initializeProject(options = {}) {
 		const selectedStorage = options.storage || 'local';
 		const authCredentials = null; // No auth in non-interactive mode
 
-		await createProjectStructure(
-			true, // Always add aliases
-			initGit,
-			storeTasksInGit,
-			dryRun,
-			{ ...options, preferredLanguage: 'English' }, // Default to English in non-interactive mode
-			selectedRuleProfiles,
-			selectedStorage,
-			authCredentials
-		);
+			await createProjectStructure(
+				true, // Always add aliases
+				initGit,
+				storeTasksInGit,
+				dryRun,
+				{ ...options, preferredLanguage: 'Chinese' }, // Default to Chinese in non-interactive mode
+				selectedRuleProfiles,
+				selectedStorage,
+				authCredentials
+			);
 	} else {
 		// Interactive logic
 		log('debug', 'Required options not provided, proceeding with prompts.');
@@ -552,12 +552,12 @@ async function initializeProject(options = {}) {
 				);
 			}
 
-			// Prompt for response language preference
-			const languageInput = await promptQuestion(
-				rl,
-				chalk.cyan('Preferred response language (English): ')
-			);
-			const preferredLanguage = languageInput.trim() || 'English';
+				// Prompt for response language preference
+				const languageInput = await promptQuestion(
+					rl,
+					chalk.cyan('Preferred response language (Chinese): ')
+				);
+				const preferredLanguage = languageInput.trim() || 'Chinese';
 
 			// Confirm settings with cleaner formatting
 			console.log('\n' + chalk.bold('Taskmaster Project Settings:'));
