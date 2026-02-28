@@ -5362,7 +5362,7 @@ function setupCLI() {
 	const programInstance = new Command()
 		.name('task-master')
 		.description('AI-driven development task management')
-		.version(process.env.TM_PUBLIC_VERSION || 'unknown')
+		.version(getTaskMasterVersion())
 		.helpOption('-h, --help', 'Display help')
 		.addHelpCommand(false); // Disable default help command
 

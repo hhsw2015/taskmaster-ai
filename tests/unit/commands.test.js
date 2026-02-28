@@ -121,38 +121,28 @@ describe('Commands Module - CLI Setup and Integration', () => {
 			expect(program.name()).toBe('task-master');
 		});
 
-		test('should return version that matches package.json when TM_PUBLIC_VERSION is set', () => {
-			// Read actual version from package.json
-			const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-			const expectedVersion = packageJson.version;
-
-			// Set environment variable to match package.json
-			const originalEnv = process.env.TM_PUBLIC_VERSION;
-			process.env.TM_PUBLIC_VERSION = expectedVersion;
-
+		test('should use getTaskMasterVersion for CLI version output', () => {
 			const program = setupCLI();
 			const version = program.version();
-			expect(version).toBe(expectedVersion);
-
-			// Restore original environment
-			if (originalEnv !== undefined) {
-				process.env.TM_PUBLIC_VERSION = originalEnv;
-			} else {
-				delete process.env.TM_PUBLIC_VERSION;
-			}
+			expect(version).toBeDefined();
+			expect(version).not.toBe('unknown');
 		});
 
-		test('should use default version when TM_PUBLIC_VERSION is not available', () => {
+		test('should not be affected by TM_PUBLIC_VERSION env var', () => {
+			const baselineVersion = setupCLI().version();
 			const originalEnv = process.env.TM_PUBLIC_VERSION;
-			delete process.env.TM_PUBLIC_VERSION;
+			process.env.TM_PUBLIC_VERSION = '0.0.0-env-value';
 
-			const program = setupCLI();
-			const version = program.version();
-			expect(version).toBe('unknown');
-
-			// Restore original environment
-			if (originalEnv !== undefined) {
-				process.env.TM_PUBLIC_VERSION = originalEnv;
+			try {
+				const program = setupCLI();
+				const version = program.version();
+				expect(version).toBe(baselineVersion);
+			} finally {
+				if (originalEnv !== undefined) {
+					process.env.TM_PUBLIC_VERSION = originalEnv;
+				} else {
+					delete process.env.TM_PUBLIC_VERSION;
+				}
 			}
 		});
 	});
