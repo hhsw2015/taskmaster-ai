@@ -102,6 +102,44 @@ const sanitizeIntegerConstraints = (schema) => {
 	return next;
 };
 
+/**
+ * Ensures strict object schemas include `additionalProperties: false` when
+ * an object defines explicit `properties` but omits the field.
+ *
+ * This avoids provider/runtime differences where nested objects inside unions
+ * may lose `additionalProperties` during JSON schema generation.
+ */
+const enforceStrictObjectSchemas = (schema) => {
+	if (!schema || typeof schema !== 'object') {
+		return schema;
+	}
+
+	if (Array.isArray(schema)) {
+		return schema.map(enforceStrictObjectSchemas);
+	}
+
+	const next = {};
+	for (const [key, value] of Object.entries(schema)) {
+		next[key] = enforceStrictObjectSchemas(value);
+	}
+
+	const hasTypedObject = next.type === 'object';
+	const hasPropertiesObject =
+		next.properties &&
+		typeof next.properties === 'object' &&
+		!Array.isArray(next.properties);
+	const hasAdditionalProperties = Object.prototype.hasOwnProperty.call(
+		next,
+		'additionalProperties'
+	);
+
+	if (hasTypedObject && hasPropertiesObject && !hasAdditionalProperties) {
+		next.additionalProperties = false;
+	}
+
+	return next;
+};
+
 const buildSafeSchema = (schema) => {
 	const baseSchema = zodSchema(schema);
 	if (!baseSchema || typeof baseSchema !== 'object') {
@@ -112,7 +150,8 @@ const buildSafeSchema = (schema) => {
 		return baseSchema;
 	}
 
-	const sanitizedSchema = sanitizeIntegerConstraints(baseSchema.jsonSchema);
+	const integerSanitizedSchema = sanitizeIntegerConstraints(baseSchema.jsonSchema);
+	const sanitizedSchema = enforceStrictObjectSchemas(integerSanitizedSchema);
 
 	if (typeof jsonSchemaHelper === 'function') {
 		return jsonSchemaHelper(sanitizedSchema, { validate: baseSchema.validate });

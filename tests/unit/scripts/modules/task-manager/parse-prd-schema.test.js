@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
+import { zodSchema } from 'ai';
 import { prdResponseSchema } from '../../../../../scripts/modules/task-manager/parse-prd/parse-prd-config.js';
 
 describe('PRD Response Schema', () => {
@@ -149,6 +150,19 @@ describe('PRD Response Schema', () => {
 				// With .default(null), omitted metadata becomes null (not undefined)
 				expect(result.data.metadata).toBeNull();
 			}
+		});
+	});
+
+	describe('JSON schema compatibility', () => {
+		it('should set additionalProperties=false for metadata union object', () => {
+			const schema = zodSchema(prdResponseSchema).jsonSchema;
+			const metadataAnyOf = schema?.properties?.metadata?.anyOf;
+			const metadataObjectSchema = Array.isArray(metadataAnyOf)
+				? metadataAnyOf.find((item) => item?.type === 'object')
+				: undefined;
+
+			expect(metadataObjectSchema).toBeDefined();
+			expect(metadataObjectSchema.additionalProperties).toBe(false);
 		});
 	});
 });

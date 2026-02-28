@@ -485,6 +485,50 @@ describe('BaseAIProvider', () => {
 				})
 			);
 		});
+
+		it('should enforce additionalProperties=false for nested object schemas in unions', async () => {
+			mockGenerateObject.mockResolvedValue({
+				object: { tasks: [] },
+				usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 }
+			});
+
+			const schemaWithMissingNestedAdditionalProperties = {
+				jsonSchema: {
+					type: 'object',
+					properties: {
+						metadata: {
+							anyOf: [
+								{
+									type: 'object',
+									properties: {
+										projectName: { type: 'string' }
+									},
+									required: ['projectName']
+								},
+								{ type: 'null' }
+							]
+						}
+					},
+					required: ['metadata'],
+					additionalProperties: false
+				},
+				validate: jest.fn()
+			};
+
+			await testProvider.generateObject({
+				apiKey: 'key',
+				modelId: 'model',
+				messages: [{ role: 'user', content: 'test' }],
+				schema: schemaWithMissingNestedAdditionalProperties,
+				objectName: 'TestObject'
+			});
+
+			const generatedSchema = mockGenerateObject.mock.calls[0][0].schema;
+			expect(
+				generatedSchema.jsonSchema.properties.metadata.anyOf[0]
+					.additionalProperties
+			).toBe(false);
+		});
 	});
 
 	describe('8. Integration Points - Client Creation', () => {

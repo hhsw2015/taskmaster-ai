@@ -36,7 +36,7 @@ export const prdResponseSchema = z.object({
 				totalTasks: z.number(),
 				sourceFile: z.string(),
 				generatedAt: z.string()
-			}),
+			}).strict(),
 			z.null()
 		])
 		.default(null)
