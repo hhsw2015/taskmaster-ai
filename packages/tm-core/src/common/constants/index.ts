@@ -9,19 +9,111 @@ import type {
 	TaskStatus
 } from '../types/index.js';
 
-// Import from root package.json (monorepo root) for version info
-import packageJson from '../../../../../package.json' with { type: 'json' };
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const DEFAULT_PACKAGE_NAME = 'task-master-ai';
+const DEFAULT_VERSION = 'unknown';
+
+function isTaskMasterCliPackageJson(content: unknown): content is {
+	name?: unknown;
+	version?: unknown;
+	bin?: unknown;
+} {
+	if (!content || typeof content !== 'object') {
+		return false;
+	}
+
+	const pkg = content as { bin?: unknown };
+	if (!pkg.bin || typeof pkg.bin !== 'object') {
+		return false;
+	}
+
+	const bin = pkg.bin as Record<string, unknown>;
+	return (
+		Object.prototype.hasOwnProperty.call(bin, 'task-master') ||
+		Object.prototype.hasOwnProperty.call(bin, 'task-master-ai')
+	);
+}
+
+function readJsonFile(filePath: string): unknown | null {
+	try {
+		const raw = fs.readFileSync(filePath, 'utf8');
+		return JSON.parse(raw);
+	} catch {
+		return null;
+	}
+}
+
+function findTaskMasterCliPackageJson(startDir: string): string | null {
+	let currentDir = startDir;
+
+	while (true) {
+		const candidate = path.join(currentDir, 'package.json');
+		if (fs.existsSync(candidate)) {
+			const content = readJsonFile(candidate);
+			if (isTaskMasterCliPackageJson(content)) {
+				return candidate;
+			}
+		}
+
+		const parentDir = path.dirname(currentDir);
+		if (parentDir === currentDir) {
+			return null;
+		}
+		currentDir = parentDir;
+	}
+}
+
+export function resolveTaskMasterPackageMetadata(
+	startDir = path.dirname(fileURLToPath(import.meta.url))
+): {
+	name: string;
+	version: string;
+} {
+	const packageJsonPath = findTaskMasterCliPackageJson(startDir);
+	if (!packageJsonPath) {
+		return {
+			name: DEFAULT_PACKAGE_NAME,
+			version: process.env.npm_package_version || DEFAULT_VERSION
+		};
+	}
+
+	const content = readJsonFile(packageJsonPath);
+	if (!content || typeof content !== 'object') {
+		return {
+			name: DEFAULT_PACKAGE_NAME,
+			version: process.env.npm_package_version || DEFAULT_VERSION
+		};
+	}
+
+	const packageJson = content as { name?: unknown; version?: unknown };
+	const name =
+		typeof packageJson.name === 'string' && packageJson.name.trim().length > 0
+			? packageJson.name
+			: DEFAULT_PACKAGE_NAME;
+	const version =
+		typeof packageJson.version === 'string' &&
+		packageJson.version.trim().length > 0
+			? packageJson.version
+			: process.env.npm_package_version || DEFAULT_VERSION;
+
+	return { name, version };
+}
+
+const taskMasterPackageMetadata = resolveTaskMasterPackageMetadata();
 
 /**
  * Task Master version from root package.json
  * Centralized to avoid fragile relative paths throughout the codebase
  */
-export const TASKMASTER_VERSION = packageJson.version || 'unknown';
+export const TASKMASTER_VERSION = taskMasterPackageMetadata.version;
 
 /**
  * Package name from root package.json
  */
-export const PACKAGE_NAME = packageJson.name || 'task-master-ai';
+export const PACKAGE_NAME = taskMasterPackageMetadata.name;
 
 /**
  * Valid task status values

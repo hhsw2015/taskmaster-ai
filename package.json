@@ -37,6 +37,7 @@
 		"test:ci": "node --experimental-vm-modules node_modules/.bin/jest --coverage --ci",
 		"test:e2e": "./tests/e2e/run_e2e.sh",
 		"test:e2e-report": "./tests/e2e/run_e2e.sh --analyze-log",
+		"prepack": "npm run build",
 		"postpack": "chmod +x dist/task-master.js dist/mcp-server.js",
 		"changeset": "changeset",
 		"changeset:validate": "node .github/scripts/validate-changesets.mjs",
