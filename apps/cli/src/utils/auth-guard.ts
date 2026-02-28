@@ -25,6 +25,8 @@ export interface AuthGuardOptions {
 	skipConfirmation?: boolean;
 	/** Action name for the prompt (e.g., "export tasks", "view briefs") */
 	actionName?: string;
+	/** If true, do not use interactive prompts */
+	nonInteractive?: boolean;
 }
 
 /**
@@ -84,6 +86,22 @@ export async function ensureAuthenticated(
 			return { authenticated: true };
 		}
 
+		if (options.nonInteractive) {
+			const orgResult = await ensureOrgSelected(authManager, {
+				silent: true,
+				nonInteractive: true
+			});
+
+			if (!orgResult.success) {
+				return {
+					authenticated: false,
+					error: orgResult.message || 'Organization selection required'
+				};
+			}
+
+			return { authenticated: true };
+		}
+
 		// Org not selected, need to prompt
 		const orgResult = await ensureOrgSelected(authManager, {
 			promptMessage: 'Select an organization to continue:'
@@ -100,6 +118,14 @@ export async function ensureAuthenticated(
 	}
 
 	// Not authenticated - prompt user
+	if (options.nonInteractive) {
+		return {
+			authenticated: false,
+			error:
+				'Not authenticated. Run "tm auth login" first, then retry this command.'
+		};
+	}
+
 	const actionName = options.actionName || 'continue';
 	const message =
 		options.message || `You're not logged in. Log in to ${actionName}?`;

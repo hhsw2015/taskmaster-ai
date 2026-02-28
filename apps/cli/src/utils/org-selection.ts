@@ -29,6 +29,8 @@ export interface EnsureOrgOptions {
 	promptMessage?: string;
 	/** If true, always prompt for org selection even if one is already set */
 	forceSelection?: boolean;
+	/** If true, do not show prompts; fail when manual choice is required */
+	nonInteractive?: boolean;
 }
 
 /**
@@ -57,7 +59,12 @@ export async function ensureOrgSelected(
 	authManager: AuthManager,
 	options: EnsureOrgOptions = {}
 ): Promise<OrgSelectionResult> {
-	const { silent = false, promptMessage, forceSelection = false } = options;
+	const {
+		silent = false,
+		promptMessage,
+		forceSelection = false,
+		nonInteractive = false
+	} = options;
 
 	try {
 		const context = authManager.getContext();
@@ -102,6 +109,15 @@ export async function ensureOrgSelected(
 				orgId: orgs[0].id,
 				orgName: orgs[0].name,
 				orgSlug: orgs[0].slug
+			};
+		}
+
+		// Multiple orgs - prompt for selection unless non-interactive
+		if (nonInteractive) {
+			return {
+				success: false,
+				message:
+					'Multiple organizations available but none selected. Run "tm context org <org-id>" first.'
 			};
 		}
 

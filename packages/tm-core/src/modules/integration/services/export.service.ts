@@ -93,6 +93,8 @@ export interface GenerateBriefOptions {
 		title?: string;
 		/** Optional explicit description (overrides generation) */
 		description?: string;
+		/** Preferred language for generated brief metadata */
+		language?: string;
 	};
 }
 
@@ -529,6 +531,7 @@ export class ExportService {
 	 */
 	private transformTasksForBulkImport(tasks: Task[]): any[] {
 		const flatTasks: any[] = [];
+		const responseLanguage = this.configManager.getResponseLanguage();
 
 		// Build a set of all valid task/subtask IDs for dependency validation
 		const validIds = new Set<string>();
@@ -552,7 +555,7 @@ export class ExportService {
 			flatTasks.push({
 				externalId: String(task.id),
 				title: task.title,
-				description: this.enrichDescription(task),
+				description: this.enrichDescription(task, responseLanguage),
 				status: this.mapStatusForAPI(task.status),
 				priority: task.priority || 'medium',
 				dependencies: validDependencies,
@@ -586,7 +589,7 @@ export class ExportService {
 						externalId: `${task.id}.${subtask.id}`,
 						parentExternalId: String(task.id),
 						title: subtask.title,
-						description: this.enrichDescription(subtask),
+						description: this.enrichDescription(subtask, responseLanguage),
 						status: this.mapStatusForAPI(subtask.status),
 						priority: subtask.priority || 'medium',
 						dependencies: subtaskDependencies,
@@ -612,8 +615,21 @@ export class ExportService {
 	 * Enrich task/subtask description with implementation details and test strategy
 	 * Creates a comprehensive markdown-formatted description
 	 */
-	private enrichDescription(taskOrSubtask: Task | any): string {
+	private enrichDescription(
+		taskOrSubtask: Task | any,
+		responseLanguage?: string
+	): string {
 		const sections: string[] = [];
+		const isEnglish = this.isEnglishLanguage(responseLanguage);
+		const implementationDetailsHeading = isEnglish
+			? '## Implementation Details\n'
+			: '## 实现细节\n';
+		const testStrategyHeading = isEnglish
+			? '## Test Strategy\n'
+			: '## 测试策略\n';
+		const defaultDescription = isEnglish
+			? 'No description provided'
+			: '未提供描述';
 
 		// Start with original description if it exists
 		if (taskOrSubtask.description) {
@@ -622,18 +638,35 @@ export class ExportService {
 
 		// Add implementation details section
 		if (taskOrSubtask.details) {
-			sections.push('## Implementation Details\n');
+			sections.push(implementationDetailsHeading);
 			sections.push(taskOrSubtask.details);
 		}
 
 		// Add test strategy section
 		if (taskOrSubtask.testStrategy) {
-			sections.push('## Test Strategy\n');
+			sections.push(testStrategyHeading);
 			sections.push(taskOrSubtask.testStrategy);
 		}
 
 		// Join sections with double newlines for better markdown formatting
-		return sections.join('\n\n').trim() || 'No description provided';
+		return sections.join('\n\n').trim() || defaultDescription;
+	}
+
+	private isEnglishLanguage(responseLanguage?: string): boolean {
+		const language = (
+			responseLanguage ||
+			this.configManager.getResponseLanguage() ||
+			''
+		)
+			.trim()
+			.toLowerCase();
+
+		return (
+			language === 'english' ||
+			language === 'en' ||
+			language.startsWith('english-') ||
+			language.startsWith('en-')
+		);
 	}
 
 	/**
@@ -876,6 +909,8 @@ export class ExportService {
 				projectName: projectName
 			},
 			orgId,
+			responseLanguage:
+				options.options?.language || this.configManager.getResponseLanguage(),
 			options: options.options
 		});
 	}
@@ -885,6 +920,7 @@ export class ExportService {
 	 */
 	private transformTasksForImport(tasks: Task[]): ImportTask[] {
 		const importTasks: ImportTask[] = [];
+		const responseLanguage = this.configManager.getResponseLanguage();
 
 		// Build a set of all valid task/subtask IDs for dependency validation
 		const validIds = new Set<string>();
@@ -907,7 +943,7 @@ export class ExportService {
 			importTasks.push({
 				externalId: String(task.id),
 				title: task.title,
-				description: this.enrichDescription(task),
+				description: this.enrichDescription(task, responseLanguage),
 				details: task.details,
 				status: this.mapStatusForImport(task.status),
 				priority: this.mapPriorityForImport(task.priority),
@@ -938,7 +974,7 @@ export class ExportService {
 						externalId: `${task.id}.${subtask.id}`,
 						parentId: String(task.id),
 						title: subtask.title,
-						description: this.enrichDescription(subtask),
+						description: this.enrichDescription(subtask, responseLanguage),
 						details: subtask.details,
 						status: this.mapStatusForImport(subtask.status),
 						priority: this.mapPriorityForImport(subtask.priority),
@@ -1035,6 +1071,7 @@ export class ExportService {
 			projectName?: string;
 		};
 		orgId?: string;
+		responseLanguage?: string;
 		options?: GenerateBriefOptions['options'];
 	}): Promise<GenerateBriefResult> {
 		// Use AuthDomain to get the properly formatted API base URL
@@ -1083,25 +1120,60 @@ export class ExportService {
 				preserveHierarchy: request.options?.preserveHierarchy ?? true,
 				preserveDependencies: request.options?.preserveDependencies ?? true,
 				title: request.options?.title,
-				description: request.options?.description
+				description: request.options?.description,
+				language: this.isEnglishLanguage(request.responseLanguage)
+					? 'English'
+					: 'Chinese'
 			}
 		};
 
 		try {
-			const response = await fetch(apiUrl, {
+			const requestHeaders = {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${accessToken}`,
+				'x-account-id': accountId // Also send as header for redundancy
+			};
+
+			let response = await fetch(apiUrl, {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${accessToken}`,
-					'x-account-id': accountId // Also send as header for redundancy
-				},
+				headers: requestHeaders,
 				body: JSON.stringify(requestBody)
 			});
+			let preReadBodyText: string | undefined;
+
+			// Retry without language if backend runs strict schema validation.
+			if (!response.ok && response.status === 400) {
+				const bodyText = await response.text();
+				preReadBodyText = bodyText;
+				const normalizedBody = bodyText.toLowerCase();
+				if (
+					normalizedBody.includes('language') &&
+					(normalizedBody.includes('additional') ||
+						normalizedBody.includes('schema') ||
+						normalizedBody.includes('unknown'))
+				) {
+					const fallbackRequestBody = {
+						...requestBody,
+						options: {
+							...(requestBody.options as Record<string, unknown>)
+						}
+					};
+					delete (fallbackRequestBody.options as Record<string, unknown>)
+						.language;
+
+					response = await fetch(apiUrl, {
+						method: 'POST',
+						headers: requestHeaders,
+						body: JSON.stringify(fallbackRequestBody)
+					});
+					preReadBodyText = undefined;
+				}
+			}
 
 			// Check content type to avoid JSON parse errors on HTML responses (e.g., 404 pages)
 			const contentType = response.headers.get('content-type') || '';
 			if (!contentType.includes('application/json')) {
-				const text = await response.text();
+				const text = preReadBodyText || (await response.text());
 				return {
 					success: false,
 					error: {
@@ -1111,7 +1183,9 @@ export class ExportService {
 				};
 			}
 
-			const jsonData = await response.json();
+			const jsonData = preReadBodyText
+				? JSON.parse(preReadBodyText)
+				: await response.json();
 			const result = jsonData as GenerateBriefResponse;
 
 			if (!response.ok || !result.success) {

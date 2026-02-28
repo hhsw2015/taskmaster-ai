@@ -65,6 +65,17 @@ interface MultiExportResult {
 	}>;
 }
 
+interface ExportCliOptions {
+	tag?: string;
+	title?: string;
+	description?: string;
+	invite?: boolean;
+	inviteEmails?: string;
+	yes?: boolean;
+	nonInteractive?: boolean;
+	allUnexported?: boolean;
+}
+
 /**
  * ExportCommand extending Commander's Command class
  * Handles task export to Hamster by generating a new brief
@@ -99,9 +110,25 @@ export class ExportCommand extends Command {
 			'-I, --invite',
 			'Prompt for email addresses to invite collaborators to the brief'
 		);
+		this.option(
+			'--invite-emails <emails>',
+			'Invite collaborators with comma-separated emails (non-interactive)'
+		);
+		this.option(
+			'--all-unexported',
+			'Export all local tags not previously exported (non-interactive)'
+		);
+		this.option(
+			'-y, --yes',
+			'Skip interactive prompts and run non-interactively'
+		);
+		this.option(
+			'--non-interactive',
+			'Force non-interactive mode (same as --yes)'
+		);
 
 		// Default action
-		this.action(async (options?: any) => {
+		this.action(async (options?: ExportCliOptions) => {
 			await this.executeExport(options);
 		});
 	}
@@ -134,11 +161,15 @@ export class ExportCommand extends Command {
 	/**
 	 * Execute the export command
 	 */
-	private async executeExport(options?: any): Promise<void> {
+	private async executeExport(options?: ExportCliOptions): Promise<void> {
 		try {
+			const nonInteractive = this.isNonInteractive(options);
+
 			// Ensure user is authenticated (will prompt and trigger OAuth if not)
 			const authResult = await ensureAuthenticated({
-				actionName: 'export tasks to Hamster'
+				actionName: 'export tasks to Hamster',
+				skipConfirmation: nonInteractive,
+				nonInteractive
 			});
 
 			if (!authResult.authenticated) {
@@ -148,7 +179,23 @@ export class ExportCommand extends Command {
 						action: 'cancelled',
 						message: 'User cancelled authentication'
 					};
+				} else if (authResult.error) {
+					this.lastResult = {
+						success: false,
+						action: 'cancelled',
+						message: authResult.error
+					};
+					console.error(chalk.red(`\n${authResult.error}\n`));
 				}
+				return;
+			}
+			if (authResult.error) {
+				this.lastResult = {
+					success: false,
+					action: 'cancelled',
+					message: authResult.error
+				};
+				console.error(chalk.red(`\n${authResult.error}\n`));
 				return;
 			}
 
@@ -166,6 +213,18 @@ export class ExportCommand extends Command {
 						'  Tasks in this context already live on Hamster - export is unnecessary.\n'
 					)
 				);
+
+				if (nonInteractive) {
+					const effectiveTag = options?.tag || this.getDefaultTag();
+					const nonInteractiveOptions: ExportCliOptions = {
+						...options,
+						tag: effectiveTag,
+						nonInteractive: true
+					};
+					showUpgradeMessage(effectiveTag);
+					await this.executeStandardExport(nonInteractiveOptions);
+					return;
+				}
 
 				// Ask if they want to export a different tag
 				const { wantsToExportDifferent } = await inquirer.prompt<{
@@ -194,20 +253,56 @@ export class ExportCommand extends Command {
 				return;
 			}
 
+			if (nonInteractive && options?.allUnexported) {
+				const unexportedTags = await this.getUnexportedTagNames();
+				if (unexportedTags.length === 0) {
+					console.log(chalk.yellow('\nNo unexported local tags found.\n'));
+					this.lastResult = {
+						success: false,
+						action: 'cancelled',
+						message: 'No unexported tags'
+					};
+					return;
+				}
+				if (unexportedTags.length === 1) {
+					const onlyTag = unexportedTags[0];
+					showUpgradeMessage(onlyTag);
+					await this.executeStandardExport({
+						...options,
+						tag: onlyTag,
+						nonInteractive: true
+					});
+					return;
+				}
+				await this.executeExportMultipleTags(unexportedTags, {
+					...options,
+					nonInteractive: true
+				});
+				return;
+			}
+
 			// Determine if we should be interactive:
 			// - Interactive by default (no flags passed)
 			// - Non-interactive if --tag, --title, or --description are specified
 			const hasDirectFlags =
-				options?.tag || options?.title || options?.description;
-			const isInteractive = !hasDirectFlags;
+				options?.tag ||
+				options?.title ||
+				options?.description ||
+				options?.inviteEmails;
+			const isInteractive = !nonInteractive && !hasDirectFlags;
 
 			if (isInteractive) {
 				// Interactive mode - tag selection will show upgrade message after selection
 				await this.executeInteractiveTagSelection(options);
 			} else {
-				// Non-interactive mode with explicit --tag flag
-				showUpgradeMessage(options?.tag || 'master');
-				await this.executeStandardExport(options);
+				// Non-interactive mode with explicit flags
+				const effectiveTag = options?.tag || this.getDefaultTag();
+				showUpgradeMessage(effectiveTag);
+				await this.executeStandardExport({
+					...options,
+					tag: effectiveTag,
+					nonInteractive
+				});
 			}
 		} catch (error: any) {
 			displayError(error);
@@ -217,7 +312,9 @@ export class ExportCommand extends Command {
 	/**
 	 * Interactive tag selection before export
 	 */
-	private async executeInteractiveTagSelection(options?: any): Promise<void> {
+	private async executeInteractiveTagSelection(
+		options?: ExportCliOptions
+	): Promise<void> {
 		try {
 			// Get available local tags from file storage DIRECTLY
 			// (not via taskMasterCore which may be using API storage when connected to a brief)
@@ -373,7 +470,9 @@ export class ExportCommand extends Command {
 	/**
 	 * Execute standard (non-interactive) export
 	 */
-	private async executeStandardExport(options: any): Promise<void> {
+	private async executeStandardExport(
+		options: ExportCliOptions
+	): Promise<void> {
 		let spinner: Ora | undefined;
 
 		try {
@@ -409,10 +508,7 @@ export class ExportCommand extends Command {
 			this.showTaskPreview(tasks);
 
 			// Prompt for invite emails if --invite flag is set
-			let inviteEmails: string[] = [];
-			if (options?.invite) {
-				inviteEmails = await this.promptForInviteEmails();
-			}
+			const inviteEmails = await this.resolveInviteEmails(options);
 
 			// Perform export (invitations sent separately now)
 			spinner = ora('Creating brief and exporting tasks...').start();
@@ -479,7 +575,9 @@ export class ExportCommand extends Command {
 	/**
 	 * Execute interactive export with task selection
 	 */
-	private async executeInteractiveExport(options: any): Promise<void> {
+	private async executeInteractiveExport(
+		options: ExportCliOptions
+	): Promise<void> {
 		let spinner: Ora | undefined;
 
 		try {
@@ -664,7 +762,7 @@ export class ExportCommand extends Command {
 	 */
 	private async executeExportMultipleTags(
 		tags: string[],
-		_options?: any
+		options?: ExportCliOptions
 	): Promise<void> {
 		console.log('');
 		console.log(chalk.cyan(`  Exporting ${tags.length} tags to Hamster...\n`));
@@ -675,22 +773,26 @@ export class ExportCommand extends Command {
 		}
 		console.log('');
 
-		// Ask about inviting collaborators once for all briefs
+		const nonInteractive = this.isNonInteractive(options);
 		let inviteEmails: string[] = [];
-		const { wantsToInvite } = await inquirer.prompt<{
-			wantsToInvite: boolean;
-		}>([
-			{
-				type: 'confirm',
-				name: 'wantsToInvite',
-				message:
-					'Do you want to invite teammates to collaborate on these tasks?',
-				default: false
-			}
-		]);
+		if (nonInteractive) {
+			inviteEmails = await this.resolveInviteEmails(options);
+		} else {
+			const { wantsToInvite } = await inquirer.prompt<{
+				wantsToInvite: boolean;
+			}>([
+				{
+					type: 'confirm',
+					name: 'wantsToInvite',
+					message:
+						'Do you want to invite teammates to collaborate on these tasks?',
+					default: false
+				}
+			]);
 
-		if (wantsToInvite) {
-			inviteEmails = await this.promptForInviteEmails();
+			if (wantsToInvite) {
+				inviteEmails = await this.promptForInviteEmails();
+			}
 		}
 
 		// Create export promises for all tags
@@ -820,7 +922,7 @@ export class ExportCommand extends Command {
 		}
 
 		// If multiple successful, allow user to change context to a different brief
-		if (successful.length > 1) {
+		if (successful.length > 1 && !nonInteractive) {
 			// For multiple successful exports, show option to set context
 			const briefChoices = successful.map((r) => ({
 				name: `${r.tag} - ${r.brief?.title}`,
@@ -933,6 +1035,72 @@ export class ExportCommand extends Command {
 			.map((e) => e.trim())
 			.filter(Boolean)
 			.slice(0, 10);
+	}
+
+	private isNonInteractive(options?: ExportCliOptions): boolean {
+		return Boolean(
+			options?.yes ||
+				options?.nonInteractive ||
+				process.env.TM_NON_INTERACTIVE === '1' ||
+				!process.stdin.isTTY
+		);
+	}
+
+	private getDefaultTag(): string {
+		return this.taskMasterCore?.config.getActiveTag() || 'master';
+	}
+
+	private parseInviteEmails(input?: string): string[] {
+		if (!input || !input.trim()) {
+			return [];
+		}
+		const emailList = input
+			.split(',')
+			.map((e) => e.trim())
+			.filter(Boolean);
+		if (emailList.length > 10) {
+			throw new Error('Maximum 10 email addresses allowed');
+		}
+		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+		const invalid = emailList.filter((e) => !emailRegex.test(e));
+		if (invalid.length > 0) {
+			throw new Error(`Invalid email format: ${invalid.join(', ')}`);
+		}
+		return emailList;
+	}
+
+	private async resolveInviteEmails(
+		options?: ExportCliOptions
+	): Promise<string[]> {
+		const nonInteractive = this.isNonInteractive(options);
+		if (options?.inviteEmails) {
+			return this.parseInviteEmails(options.inviteEmails);
+		}
+		if (options?.invite && nonInteractive) {
+			throw new Error(
+				'Non-interactive mode does not support --invite prompt. Use --invite-emails instead.'
+			);
+		}
+		if (options?.invite) {
+			return this.promptForInviteEmails();
+		}
+		return [];
+	}
+
+	private async getUnexportedTagNames(): Promise<string[]> {
+		const projectRoot = getProjectRoot();
+		if (!projectRoot) {
+			return [];
+		}
+
+		const fileStorage = new FileStorage(projectRoot);
+		await fileStorage.initialize();
+		const tagsResult = await fileStorage.getTagsWithStats();
+		const exportedTags = await this.getExportedTags();
+
+		return (tagsResult.tags || [])
+			.filter((tag) => !exportedTags[tag.name])
+			.map((tag) => tag.name);
 	}
 
 	/**
@@ -1180,6 +1348,18 @@ export class ExportTagCommand extends Command {
 			'--description <description>',
 			'Specify a description for the generated brief'
 		);
+		this.option(
+			'--invite-emails <emails>',
+			'Invite collaborators with comma-separated emails (non-interactive)'
+		);
+		this.option(
+			'-y, --yes',
+			'Skip interactive prompts and run non-interactively'
+		);
+		this.option(
+			'--non-interactive',
+			'Force non-interactive mode (same as --yes)'
+		);
 
 		this.action(async (tag: string, options: any) => {
 			// Create and execute ExportCommand with tag option
@@ -1191,7 +1371,12 @@ export class ExportTagCommand extends Command {
 				'--tag',
 				tag,
 				...(options.title ? ['--title', options.title] : []),
-				...(options.description ? ['--description', options.description] : [])
+				...(options.description ? ['--description', options.description] : []),
+				...(options.inviteEmails
+					? ['--invite-emails', options.inviteEmails]
+					: []),
+				...(options.yes ? ['--yes'] : []),
+				...(options.nonInteractive ? ['--non-interactive'] : [])
 			]);
 		});
 	}
