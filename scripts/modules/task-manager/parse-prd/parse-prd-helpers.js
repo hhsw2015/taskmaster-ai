@@ -281,7 +281,11 @@ export async function buildPrompts(config, prdContent, nextId) {
 		prdContent,
 		prdPath: config.prdPath,
 		defaultTaskPriority,
-		hasCodebaseAnalysis: config.hasCodebaseAnalysis(),
+		hasCodebaseAnalysis: config.hasCodebaseAnalysis({
+			command: 'parse-prd',
+			prdContent,
+			numTasks: config.numTasks
+		}),
 		projectRoot: config.projectRoot || ''
 	});
 }

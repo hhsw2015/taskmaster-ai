@@ -293,14 +293,19 @@ async function updateSubtaskById(
 				currentDetails: subtask.details || '(No existing details)',
 				updatePrompt: prompt,
 				useResearch: useResearch,
-				gatheredContext: gatheredContext || '',
-				hasCodebaseAnalysis: hasCodebaseAnalysis(
-					useResearch,
-					projectRoot,
-					session
-				),
-				projectRoot: projectRoot
-			};
+					gatheredContext: gatheredContext || '',
+					hasCodebaseAnalysis: hasCodebaseAnalysis(
+						useResearch,
+						projectRoot,
+						session,
+						{
+							command: 'update-subtask',
+							updatePrompt: prompt,
+							task: parentTask
+						}
+					),
+					projectRoot: projectRoot
+				};
 
 			const variantKey = useResearch ? 'research' : 'default';
 			const { systemPrompt, userPrompt } = await promptManager.loadPrompt(

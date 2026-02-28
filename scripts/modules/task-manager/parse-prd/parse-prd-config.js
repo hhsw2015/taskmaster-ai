@@ -81,10 +81,15 @@ export class PrdParseConfig {
 	}
 
 	/**
-	 * Check if codebase analysis is available (Claude Code or Gemini CLI)
+	 * Check if codebase analysis is available for this PRD run
 	 */
-	hasCodebaseAnalysis() {
-		return hasCodebaseAnalysis(this.research, this.projectRoot, this.session);
+	hasCodebaseAnalysis(decisionContext = null) {
+		return hasCodebaseAnalysis(
+			this.research,
+			this.projectRoot,
+			this.session,
+			decisionContext
+		);
 	}
 }
 

@@ -188,15 +188,20 @@ async function updateTasks(
 				tasks: tasksToUpdate,
 				updatePrompt: prompt,
 				useResearch,
-				projectContext: gatheredContext,
-				hasCodebaseAnalysis: hasCodebaseAnalysis(
-					useResearch,
-					projectRoot,
-					session
-				),
-				projectRoot: projectRoot
-			}
-		);
+					projectContext: gatheredContext,
+					hasCodebaseAnalysis: hasCodebaseAnalysis(
+						useResearch,
+						projectRoot,
+						session,
+						{
+							command: 'update-tasks',
+							updatePrompt: prompt,
+							tasks: tasksToUpdate
+						}
+					),
+					projectRoot: projectRoot
+				}
+			);
 		// --- End Build Prompts ---
 
 		// --- AI Call ---

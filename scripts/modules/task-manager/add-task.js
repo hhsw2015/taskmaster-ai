@@ -403,16 +403,24 @@ async function addTask(
 					gatheredContext,
 					contextFromArgs,
 					useResearch,
-					priority: effectivePriority,
-					dependencies: numericDependencies,
-					hasCodebaseAnalysis: hasCodebaseAnalysis(
-						useResearch,
-						projectRoot,
-						session
-					),
-					projectRoot: projectRoot
-				}
-			);
+						priority: effectivePriority,
+						dependencies: numericDependencies,
+						hasCodebaseAnalysis: hasCodebaseAnalysis(
+							useResearch,
+							projectRoot,
+							session,
+							{
+								command: 'add-task',
+								prompt,
+								additionalContext: contextFromArgs,
+								task: {
+									dependencies: numericDependencies
+								}
+							}
+						),
+						projectRoot: projectRoot
+					}
+				);
 
 			// Start the loading indicator - only for text mode
 			if (outputFormat === 'text') {

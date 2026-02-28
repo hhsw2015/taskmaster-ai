@@ -55,7 +55,7 @@ const DEFAULTS = {
 			ollamaBaseURL: 'http://localhost:11434/api',
 			bedrockBaseURL: 'https://bedrock.us-east-1.amazonaws.com',
 			responseLanguage: 'Chinese',
-			enableCodebaseAnalysis: true,
+			enableCodebaseAnalysis: 'auto',
 			enableProxy: false,
 			anonymousTelemetry: true // Allow users to opt out of Sentry telemetry for local storage
 		},
@@ -562,6 +562,60 @@ function getResearchProvider(explicitRoot = null) {
 	return getModelConfigForRole('research', explicitRoot).provider;
 }
 
+function normalizeCodebaseAnalysisMode(value) {
+	if (typeof value === 'boolean') {
+		return value ? 'always' : 'never';
+	}
+
+	if (typeof value === 'string') {
+		const normalized = value.trim().toLowerCase();
+		if (
+			normalized === 'true' ||
+			normalized === '1' ||
+			normalized === 'always' ||
+			normalized === 'on' ||
+			normalized === 'enabled'
+		) {
+			return 'always';
+		}
+		if (
+			normalized === 'false' ||
+			normalized === '0' ||
+			normalized === 'never' ||
+			normalized === 'off' ||
+			normalized === 'disabled'
+		) {
+			return 'never';
+		}
+		if (normalized === 'auto') {
+			return 'auto';
+		}
+	}
+
+	return 'auto';
+}
+
+function getCodebaseAnalysisMode(session = null, projectRoot = null) {
+	const envFlag = resolveEnvVariable(
+		'TASKMASTER_ENABLE_CODEBASE_ANALYSIS',
+		session,
+		projectRoot
+	);
+	if (envFlag !== null && envFlag !== undefined && envFlag !== '') {
+		return normalizeCodebaseAnalysisMode(envFlag);
+	}
+
+	if (session?.env?.TASKMASTER_ENABLE_CODEBASE_ANALYSIS) {
+		return normalizeCodebaseAnalysisMode(
+			session.env.TASKMASTER_ENABLE_CODEBASE_ANALYSIS
+		);
+	}
+
+	return normalizeCodebaseAnalysisMode(
+		getGlobalConfig(projectRoot).enableCodebaseAnalysis
+	);
+}
+
 /**
  * Check if codebase analysis feature flag is enabled across all sources
  * Priority: .env > MCP env > config.json
@@ -570,25 +624,7 @@ function getResearchProvider(explicitRoot = null) {
  * @returns {boolean} True if codebase analysis is enabled
  */
 function isCodebaseAnalysisEnabled(session = null, projectRoot = null) {
-	// Priority 1: Environment variable
-	const envFlag = resolveEnvVariable(
-		'TASKMASTER_ENABLE_CODEBASE_ANALYSIS',
-		session,
-		projectRoot
-	);
-	if (envFlag !== null && envFlag !== undefined && envFlag !== '') {
-		return envFlag.toLowerCase() === 'true' || envFlag === '1';
-	}
-
-	// Priority 2: MCP session environment
-	if (session?.env?.TASKMASTER_ENABLE_CODEBASE_ANALYSIS) {
-		const mcpFlag = session.env.TASKMASTER_ENABLE_CODEBASE_ANALYSIS;
-		return mcpFlag.toLowerCase() === 'true' || mcpFlag === '1';
-	}
-
-	// Priority 3: Configuration file
-	const globalConfig = getGlobalConfig(projectRoot);
-	return globalConfig.enableCodebaseAnalysis !== false; // Default to true
+	return getCodebaseAnalysisMode(session, projectRoot) !== 'never';
 }
 
 /**
@@ -603,22 +639,31 @@ function hasCodebaseAnalysis(
 	projectRoot = null,
 	session = null
 ) {
-	// First check if the feature is enabled
-	if (!isCodebaseAnalysisEnabled(session, projectRoot)) {
+	const mode = getCodebaseAnalysisMode(session, projectRoot);
+	if (mode === 'never') {
 		return false;
 	}
 
-	// Then check if a codebase analysis provider is configured
 	const currentProvider = useResearch
 		? getResearchProvider(projectRoot)
 		: getMainProvider(projectRoot);
 
-	return (
+	const providerSupportsCodebaseAnalysis =
 		currentProvider === CUSTOM_PROVIDERS.CLAUDE_CODE ||
 		currentProvider === CUSTOM_PROVIDERS.GEMINI_CLI ||
 		currentProvider === CUSTOM_PROVIDERS.GROK_CLI ||
-		currentProvider === CUSTOM_PROVIDERS.CODEX_CLI
-	);
+		currentProvider === CUSTOM_PROVIDERS.CODEX_CLI;
+
+	if (!providerSupportsCodebaseAnalysis) {
+		return false;
+	}
+
+	if (mode === 'always') {
+		return true;
+	}
+
+	// In auto mode, let the model decide per task using prompt instructions.
+	return true;
 }
 
 function getResearchModelId(explicitRoot = null) {
@@ -737,8 +782,7 @@ function getResponseLanguage(explicitRoot = null) {
 }
 
 function getCodebaseAnalysisEnabled(explicitRoot = null) {
-	// Return boolean-safe value with default true
-	return getGlobalConfig(explicitRoot).enableCodebaseAnalysis !== false;
+	return getCodebaseAnalysisMode(null, explicitRoot) !== 'never';
 }
 
 function getProxyEnabled(explicitRoot = null) {
@@ -1305,6 +1349,7 @@ export {
 	getAzureBaseURL,
 	getBedrockBaseURL,
 	getResponseLanguage,
+	getCodebaseAnalysisMode,
 	getCodebaseAnalysisEnabled,
 	isCodebaseAnalysisEnabled,
 	getProxyEnabled,

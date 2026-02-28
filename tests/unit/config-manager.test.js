@@ -143,13 +143,13 @@ const DEFAULT_CONFIG = {
 		defaultNumTasks: 10,
 		defaultSubtasks: 5,
 		defaultPriority: 'medium',
-		projectName: 'Task Master',
-			ollamaBaseURL: 'http://localhost:11434/api',
-			bedrockBaseURL: 'https://bedrock.us-east-1.amazonaws.com',
-			enableCodebaseAnalysis: true,
-			enableProxy: false,
-			responseLanguage: 'Chinese'
-	},
+			projectName: 'Task Master',
+				ollamaBaseURL: 'http://localhost:11434/api',
+				bedrockBaseURL: 'https://bedrock.us-east-1.amazonaws.com',
+				enableCodebaseAnalysis: 'auto',
+				enableProxy: false,
+				responseLanguage: 'Chinese'
+		},
 	claudeCode: {},
 	codexCli: {
 		approvalMode: 'never',
@@ -1016,10 +1016,162 @@ describe('Getter Functions', () => {
 	});
 
 	// Add more tests for other getters (getResearchProvider, getProjectName, etc.)
-});
+	});
 
-// --- isConfigFilePresent Tests ---
-describe('isConfigFilePresent', () => {
+	describe('Codebase Analysis Auto Mode', () => {
+		const loadConfigWithAnalysisMode = (mode) => {
+			const configWithMode = {
+				...DEFAULT_CONFIG,
+				global: {
+					...DEFAULT_CONFIG.global,
+					enableCodebaseAnalysis: mode
+				}
+			};
+
+			fsReadFileSyncSpy.mockImplementation((filePath) => {
+				const baseName = path.basename(filePath);
+				if (baseName === 'supported-models.json') {
+					return REAL_SUPPORTED_MODELS_CONTENT;
+				}
+				if (filePath === MOCK_CONFIG_PATH) {
+					return JSON.stringify(configWithMode);
+				}
+				if (
+					filePath.includes('jest-message-util') ||
+					filePath.includes('node_modules')
+				) {
+					return '{}';
+				}
+				throw new Error(`Unexpected fs.readFileSync call in test: ${filePath}`);
+			});
+
+			fsExistsSyncSpy.mockReturnValue(true);
+			configManager.getConfig(MOCK_PROJECT_ROOT, true);
+		};
+
+		const loadConfigWithAnalysisModeAndProvider = (mode, provider) => {
+			const configWithMode = {
+				...DEFAULT_CONFIG,
+				models: {
+					...DEFAULT_CONFIG.models,
+					main: {
+						...DEFAULT_CONFIG.models.main,
+						provider
+					}
+				},
+				global: {
+					...DEFAULT_CONFIG.global,
+					enableCodebaseAnalysis: mode
+				}
+			};
+
+			fsReadFileSyncSpy.mockImplementation((filePath) => {
+				const baseName = path.basename(filePath);
+				if (baseName === 'supported-models.json') {
+					return REAL_SUPPORTED_MODELS_CONTENT;
+				}
+				if (filePath === MOCK_CONFIG_PATH) {
+					return JSON.stringify(configWithMode);
+				}
+				if (
+					filePath.includes('jest-message-util') ||
+					filePath.includes('node_modules')
+				) {
+					return '{}';
+				}
+				throw new Error(`Unexpected fs.readFileSync call in test: ${filePath}`);
+			});
+
+			fsExistsSyncSpy.mockReturnValue(true);
+			configManager.getConfig(MOCK_PROJECT_ROOT, true);
+		};
+
+		test('auto mode enables provider capability for simple prompts', () => {
+			loadConfigWithAnalysisMode('auto');
+
+			const shouldAnalyze = configManager.hasCodebaseAnalysis(
+				false,
+				MOCK_PROJECT_ROOT,
+				null,
+				{
+						command: 'add-task',
+						prompt: 'simple typo fix in readme docs only'
+					}
+				);
+
+			expect(shouldAnalyze).toBe(true);
+		});
+
+		test('auto mode enables provider capability for complex prompts', () => {
+			loadConfigWithAnalysisMode('auto');
+
+			const shouldAnalyze = configManager.hasCodebaseAnalysis(
+				false,
+				MOCK_PROJECT_ROOT,
+				null,
+				{
+					command: 'expand-task',
+					prompt:
+						'Refactor authentication module integration with src/auth/service.ts, update database schema dependencies, and resolve performance issues.'
+				}
+			);
+
+			expect(shouldAnalyze).toBe(true);
+		});
+
+		test('explicit false disables codebase analysis even for complex prompts', () => {
+			loadConfigWithAnalysisMode(false);
+
+			const shouldAnalyze = configManager.hasCodebaseAnalysis(
+				false,
+				MOCK_PROJECT_ROOT,
+				null,
+				{
+					command: 'expand-task',
+					prompt:
+						'Refactor authentication module integration with src/auth/service.ts, update database schema dependencies, and resolve performance issues.'
+				}
+			);
+
+			expect(shouldAnalyze).toBe(false);
+		});
+
+		test('explicit true enables codebase analysis even for simple prompts', () => {
+			loadConfigWithAnalysisMode(true);
+
+			const shouldAnalyze = configManager.hasCodebaseAnalysis(
+				false,
+				MOCK_PROJECT_ROOT,
+				null,
+				{
+					command: 'add-task',
+					prompt: 'simple typo fix in readme docs only'
+				}
+			);
+
+			expect(shouldAnalyze).toBe(true);
+		});
+
+		test('auto mode remains disabled for providers without codebase-analysis tools', () => {
+			loadConfigWithAnalysisModeAndProvider('auto', 'openai');
+
+			const shouldAnalyze = configManager.hasCodebaseAnalysis(
+				false,
+				MOCK_PROJECT_ROOT,
+				null,
+				{
+					command: 'add-task',
+					prompt:
+						'Refactor authentication module integration with src/auth/service.ts'
+				}
+			);
+
+			expect(shouldAnalyze).toBe(false);
+		});
+	});
+
+	// --- isConfigFilePresent Tests ---
+	describe('isConfigFilePresent', () => {
 	test('should return true if config file exists', () => {
 		fsExistsSyncSpy.mockReturnValue(true);
 		// findProjectRoot mock set in beforeEach

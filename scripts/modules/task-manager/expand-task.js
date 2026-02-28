@@ -239,7 +239,14 @@ async function expandTask(
 		const hasCodebaseAnalysisCapability = hasCodebaseAnalysis(
 			useResearch,
 			projectRoot,
-			session
+			session,
+			{
+				command: 'expand-task',
+				task,
+				additionalContext,
+				complexityReasoningContext,
+				numTasks: finalSubtaskCount
+			}
 		);
 
 		// Combine all context sources into a single additionalContext parameter

@@ -296,14 +296,19 @@ async function updateTaskById(
 			appendMode: appendMode,
 			useResearch: useResearch,
 			currentDetails: taskToUpdate.details || '(No existing details)',
-			gatheredContext: gatheredContext || '',
-			hasCodebaseAnalysis: hasCodebaseAnalysis(
-				useResearch,
-				projectRoot,
-				session
-			),
-			projectRoot: projectRoot
-		};
+				gatheredContext: gatheredContext || '',
+				hasCodebaseAnalysis: hasCodebaseAnalysis(
+					useResearch,
+					projectRoot,
+					session,
+					{
+						command: 'update-task',
+						updatePrompt: prompt,
+						task: taskToUpdate
+					}
+				),
+				projectRoot: projectRoot
+			};
 
 		const variantKey = appendMode
 			? 'append'

@@ -374,15 +374,19 @@ async function analyzeTaskComplexity(options, context = {}) {
 
 		const promptParams = {
 			tasks: tasksData.tasks,
-			gatheredContext: gatheredContext || '',
-			useResearch: useResearch,
-			hasCodebaseAnalysis: hasCodebaseAnalysis(
-				useResearch,
-				projectRoot,
-				session
-			),
-			projectRoot: projectRoot || ''
-		};
+				gatheredContext: gatheredContext || '',
+				useResearch: useResearch,
+				hasCodebaseAnalysis: hasCodebaseAnalysis(
+					useResearch,
+					projectRoot,
+					session,
+					{
+						command: 'analyze-complexity',
+						tasks: tasksData.tasks
+					}
+				),
+				projectRoot: projectRoot || ''
+			};
 
 		const { systemPrompt, userPrompt: prompt } = await promptManager.loadPrompt(
 			'analyze-complexity',
