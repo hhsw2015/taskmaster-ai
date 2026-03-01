@@ -368,6 +368,7 @@ export interface Brief {
  * ExportService handles task export to external systems
  */
 export class ExportService {
+	private static readonly MAX_TASKS_PER_IMPORT_REQUEST = 100;
 	private configManager: ConfigManager;
 	private authManager: AuthManager;
 
@@ -703,17 +704,17 @@ export class ExportService {
 
 			// Transform tasks to flat structure for API
 			const flatTasks = this.transformTasksForBulkImport(tasks);
+			const taskBatches = this.chunkImportTasks(
+				flatTasks,
+				ExportService.MAX_TASKS_PER_IMPORT_REQUEST
+			);
 
-			// Prepare request body
-			const requestBody = {
-				source: 'task-master-cli',
-				options: {
-					dryRun: false,
-					stopOnError: false
-				},
-				accountId: orgId,
-				tasks: flatTasks
-			};
+			if (flatTasks.length === 0) {
+				console.log(
+					`No tasks to export for brief ${briefId} after transformation.`
+				);
+				return;
+			}
 
 			// Get auth token
 			const accessToken = await this.authManager.getAccessToken();
@@ -721,37 +722,64 @@ export class ExportService {
 				throw new Error('Not authenticated');
 			}
 
-			// Make API request
-			const response = await fetch(apiUrl, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${accessToken}`
-				},
-				body: JSON.stringify(requestBody)
-			});
+			let totalSuccessCount = 0;
+			let totalFailedCount = 0;
+			const failedTaskErrors: string[] = [];
 
-			if (!response.ok) {
-				const errorText = await response.text();
-				throw new Error(
-					`API request failed: ${response.status} - ${errorText}`
-				);
+			for (let batchIndex = 0; batchIndex < taskBatches.length; batchIndex++) {
+				const batchTasks = taskBatches[batchIndex];
+				const requestBody = {
+					source: 'task-master-cli',
+					options: {
+						dryRun: false,
+						stopOnError: false
+					},
+					accountId: orgId,
+					tasks: batchTasks
+				};
+
+				// Make API request
+				const response = await fetch(apiUrl, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${accessToken}`
+					},
+					body: JSON.stringify(requestBody)
+				});
+
+				if (!response.ok) {
+					const errorText = await response.text();
+					throw new Error(
+						`API request failed (batch ${batchIndex + 1}/${taskBatches.length}): ${response.status} - ${errorText}`
+					);
+				}
+
+				const result = (await response.json()) as BulkTasksResponse;
+				totalSuccessCount += result.successCount;
+				totalFailedCount += result.failedCount;
+
+				if (result.failedCount > 0) {
+					failedTaskErrors.push(
+						...result.results
+							.filter((r) => !r.success)
+							.map((r) => `${r.externalId}: ${r.error}`)
+					);
+				}
 			}
 
-			const result = (await response.json()) as BulkTasksResponse;
-
-			if (result.failedCount > 0) {
-				const failedTasks = result.results
-					.filter((r) => !r.success)
-					.map((r) => `${r.externalId}: ${r.error}`)
-					.join(', ');
+			if (totalFailedCount > 0) {
+				const failedSummary = failedTaskErrors.slice(0, 10).join(', ');
+				const hasMoreFailures = failedTaskErrors.length > 10;
 				console.warn(
-					`Warning: ${result.failedCount} tasks failed to import: ${failedTasks}`
+					`Warning: ${totalFailedCount} tasks failed to import${failedSummary ? `: ${failedSummary}${hasMoreFailures ? ', ...' : ''}` : ''}`
 				);
 			}
 
+			const batchSuffix =
+				taskBatches.length > 1 ? ` in ${taskBatches.length} batches` : '';
 			console.log(
-				`Successfully exported ${result.successCount} of ${result.totalTasks} tasks to brief ${briefId}`
+				`Successfully exported ${totalSuccessCount} of ${flatTasks.length} tasks to brief ${briefId}${batchSuffix}`
 			);
 		} else {
 			// Direct Supabase approach is no longer supported
@@ -761,6 +789,21 @@ export class ExportService {
 				'Export API endpoint not configured. Please set TM_PUBLIC_BASE_DOMAIN environment variable to enable task export.'
 			);
 		}
+	}
+
+	private chunkImportTasks(tasks: any[], maxItemsPerBatch: number): any[][] {
+		if (tasks.length === 0) {
+			return [];
+		}
+
+		const safeBatchSize = Math.max(1, maxItemsPerBatch);
+		const batches: any[][] = [];
+
+		for (let i = 0; i < tasks.length; i += safeBatchSize) {
+			batches.push(tasks.slice(i, i + safeBatchSize));
+		}
+
+		return batches;
 	}
 
 	/**

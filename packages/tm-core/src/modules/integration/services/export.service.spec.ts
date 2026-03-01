@@ -115,12 +115,59 @@ describe('ExportService language behavior', () => {
 		const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body as string);
 		expect(secondBody.options.language).toBeUndefined();
 	});
+
+	it('splits exportTasks payload into batches of 100 tasks when syncing to existing brief', async () => {
+		const taskCount = 120;
+		const tasks = Array.from({ length: taskCount }, (_, index) =>
+			createTaskFixture(index + 1)
+		);
+
+		vi.spyOn(FileStorage.prototype, 'loadTasks').mockResolvedValue(tasks);
+
+		const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+			const payload = JSON.parse(String(init?.body ?? '{}'));
+			const batchSize = payload.tasks?.length ?? 0;
+
+			return createJsonResponse(200, {
+				dryRun: false,
+				totalTasks: batchSize,
+				successCount: batchSize,
+				failedCount: 0,
+				skippedCount: 0,
+				results: [],
+				summary: {
+					message: 'ok',
+					duration: 1
+				}
+			});
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		const result = await service.exportTasks({
+			orgId: 'org-1',
+			briefId: 'brief-1'
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.taskCount).toBe(taskCount);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+
+		const firstRequestBody = JSON.parse(
+			String(fetchMock.mock.calls[0][1]?.body ?? '{}')
+		);
+		const secondRequestBody = JSON.parse(
+			String(fetchMock.mock.calls[1][1]?.body ?? '{}')
+		);
+
+		expect(firstRequestBody.tasks).toHaveLength(100);
+		expect(secondRequestBody.tasks).toHaveLength(20);
+	});
 });
 
-function createTaskFixture(): Task {
+function createTaskFixture(id = 1): Task {
 	return {
-		id: 1,
-		title: '任务 1',
+		id,
+		title: `任务 ${id}`,
 		description: '这是一个任务',
 		status: 'pending',
 		priority: 'medium',
