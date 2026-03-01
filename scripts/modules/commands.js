@@ -787,6 +787,10 @@ function displayHamsterHelp() {
 					'update-task <id> <prompt>',
 					'Add information to a task\n'
 				) +
+				createCommandEntry(
+					'sync push [--brief <id|url>]',
+					'Push local tasks into the current/existing brief\n'
+				) +
 				'\n' +
 				boxen('  Authentication & Context  ', {
 					padding: 0,
@@ -864,6 +868,11 @@ function displayHamsterHelp() {
 				createCommandEntry(
 					'tm briefs',
 					'View briefs and select one\n\n',
+					'  '
+				).replace(chalk.cyan('  tm'), chalk.dim('  tm')) +
+				createCommandEntry(
+					'tm sync push --brief <brief-id>',
+					'Push local tag tasks to an existing brief\n\n',
 					'  '
 				).replace(chalk.cyan('  tm'), chalk.dim('  tm')) +
 				chalk.white.bold('» Need more commands?\n') +

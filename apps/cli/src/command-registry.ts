@@ -20,6 +20,7 @@ import { NextCommand } from './commands/next.command.js';
 import { SetStatusCommand } from './commands/set-status.command.js';
 import { ShowCommand } from './commands/show.command.js';
 import { StartCommand } from './commands/start.command.js';
+import { SyncCommand } from './commands/sync.command.js';
 import { TagsCommand } from './commands/tags.command.js';
 
 /**
@@ -81,6 +82,12 @@ export class CommandRegistry {
 			name: 'export-tag',
 			description: 'Export a specific tag to Hamster',
 			commandClass: ExportTagCommand as any,
+			category: 'task'
+		},
+		{
+			name: 'sync',
+			description: 'Sync local tasks to an existing Hamster brief',
+			commandClass: SyncCommand as any,
 			category: 'task'
 		},
 		{
