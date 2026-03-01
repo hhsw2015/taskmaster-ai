@@ -123,6 +123,7 @@ describe('SyncCommand', () => {
 		const longs = push!.options.map((option) => option.long);
 		expect(longs).toContain('--brief');
 		expect(longs).toContain('--tag');
+		expect(longs).toContain('--mode');
 		expect(longs).toContain('--yes');
 		expect(longs).toContain('--non-interactive');
 	});
@@ -151,9 +152,32 @@ describe('SyncCommand', () => {
 		expect(mocked.exportTasks).toHaveBeenCalledWith({
 			briefId: 'brief-2',
 			orgId: 'org-1',
-			tag: 'master_zh'
+			tag: 'master_zh',
+			mode: 'append'
 		});
 		expect(mocked.displayError).not.toHaveBeenCalled();
+	});
+
+	it('passes replace mode through to core export', async () => {
+		mocked.contextRef.current = {
+			orgId: 'org-1',
+			briefId: 'brief-2',
+			briefName: 'Brief 2'
+		};
+
+		const command = new SyncCommand();
+		await (command as any).executePush({
+			yes: true,
+			mode: 'replace',
+			tag: 'master'
+		});
+
+		expect(mocked.exportTasks).toHaveBeenCalledWith({
+			briefId: 'brief-2',
+			orgId: 'org-1',
+			tag: 'master',
+			mode: 'replace'
+		});
 	});
 
 	it('fails fast in non-interactive mode when brief is not selected', async () => {

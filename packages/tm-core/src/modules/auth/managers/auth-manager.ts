@@ -359,6 +359,14 @@ export class AuthManager {
 	}
 
 	/**
+	 * Clear all tasks for a specific brief
+	 */
+	async clearBriefTasks(briefId: string): Promise<number> {
+		const service = await this.getOrganizationService();
+		return service.clearTasks(briefId);
+	}
+
+	/**
 	 * Ensure a brief is selected in the current context
 	 * Throws a TaskMasterError if no brief is selected
 	 * @param operation - The operation name for error context

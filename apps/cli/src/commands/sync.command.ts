@@ -16,9 +16,12 @@ import { displayError } from '../utils/error-handler.js';
 import { ensureOrgSelected } from '../utils/org-selection.js';
 import { getProjectRoot } from '../utils/project-root.js';
 
+type SyncMode = 'append' | 'replace';
+
 export interface SyncPushOptions {
 	brief?: string;
 	tag?: string;
+	mode?: string;
 	yes?: boolean;
 	nonInteractive?: boolean;
 }
@@ -56,6 +59,11 @@ export class SyncCommand extends Command {
 				'Target brief ID or Hamster brief URL (defaults to current context brief)'
 			)
 			.option('--tag <tag>', 'Local tag to sync (defaults to active tag)')
+			.option(
+				'--mode <mode>',
+				'Sync mode: append (default) | replace',
+				'append'
+			)
 			.option('-y, --yes', 'Skip interactive prompts and run non-interactively')
 			.option('--non-interactive', 'Force non-interactive mode (same as --yes)')
 			.addHelpText(
@@ -64,6 +72,7 @@ export class SyncCommand extends Command {
 Examples:
   $ tm sync push --brief <brief-id-or-url>
   $ tm sync push --brief <brief-id-or-url> --tag master_zh
+  $ tm sync push --mode replace --brief <brief-id-or-url>
   $ tm sync push --yes --brief https://tryhamster.com/home/<org>/briefs/<id>
 `
 			)
@@ -91,6 +100,21 @@ Examples:
 
 		try {
 			const nonInteractive = this.isNonInteractive(options);
+			const syncMode = this.resolveSyncMode(options.mode);
+			if (!syncMode) {
+				this.lastResult = {
+					success: false,
+					action: 'cancelled',
+					message:
+						'Invalid sync mode. Supported values: append, replace.'
+				};
+				console.error(
+					chalk.red(
+						'\nInvalid sync mode. Supported values: append, replace.\n'
+					)
+				);
+				return;
+			}
 			const authResult = await ensureAuthenticated({
 				actionName: 'sync local tasks to an existing Hamster brief',
 				skipConfirmation: nonInteractive,
@@ -156,7 +180,10 @@ Examples:
 					{
 						type: 'confirm',
 						name: 'confirmed',
-						message: `Sync local tag "${sourceTag}" to brief "${context.briefName || context.briefId}"?`,
+						message:
+							syncMode === 'replace'
+								? `Replace sync will delete existing tasks in brief "${context.briefName || context.briefId}" and import local tag "${sourceTag}". Continue?`
+								: `Sync local tag "${sourceTag}" to brief "${context.briefName || context.briefId}"?`,
 						default: true
 					}
 				]);
@@ -176,14 +203,15 @@ Examples:
 			const result = await this.taskMasterCore!.integration.exportTasks({
 				briefId: context.briefId,
 				orgId: context.orgId,
-				tag: sourceTag
+				tag: sourceTag,
+				mode: syncMode
 			});
 
 			if (result.success) {
 				spinner.succeed(`Synced ${result.taskCount} task(s)`);
 				console.log(
 					chalk.gray(
-						`  Brief: ${context.briefName || context.briefId}\n  Tag: ${sourceTag}\n`
+						`  Brief: ${context.briefName || context.briefId}\n  Tag: ${sourceTag}\n  Mode: ${syncMode}\n`
 					)
 				);
 				this.lastResult = {
@@ -213,6 +241,15 @@ Examples:
 			}
 			displayError(error);
 		}
+	}
+
+	private resolveSyncMode(mode?: string): SyncMode | null {
+		const normalized = (mode || 'append').trim().toLowerCase();
+		if (normalized === 'append' || normalized === 'replace') {
+			return normalized;
+		}
+
+		return null;
 	}
 
 	private async ensureTargetBrief(

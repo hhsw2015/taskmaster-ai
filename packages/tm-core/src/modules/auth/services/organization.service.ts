@@ -383,4 +383,57 @@ export class OrganizationService {
 			);
 		}
 	}
+
+	/**
+	 * Clear all tasks for a specific brief.
+	 * Used by sync replace mode to avoid duplicate historical entries.
+	 */
+	async clearTasks(briefId: string): Promise<number> {
+		try {
+			const { count, error: countError } = await this.supabaseClient
+				.from('tasks')
+				.select('id', { count: 'exact', head: true })
+				.eq('brief_id', briefId);
+
+			if (countError) {
+				throw new TaskMasterError(
+					`Failed to count tasks before clear: ${countError.message}`,
+					ERROR_CODES.API_ERROR,
+					{ operation: 'clearTasks:count', briefId },
+					countError
+				);
+			}
+
+			const existingCount = count ?? 0;
+			if (existingCount === 0) {
+				return 0;
+			}
+
+			const { error: deleteError } = await this.supabaseClient
+				.from('tasks')
+				.delete()
+				.eq('brief_id', briefId);
+
+			if (deleteError) {
+				throw new TaskMasterError(
+					`Failed to clear tasks: ${deleteError.message}`,
+					ERROR_CODES.API_ERROR,
+					{ operation: 'clearTasks:delete', briefId },
+					deleteError
+				);
+			}
+
+			return existingCount;
+		} catch (error) {
+			if (error instanceof TaskMasterError) {
+				throw error;
+			}
+			throw new TaskMasterError(
+				'Failed to clear tasks',
+				ERROR_CODES.API_ERROR,
+				{ operation: 'clearTasks', briefId },
+				error as Error
+			);
+		}
+	}
 }

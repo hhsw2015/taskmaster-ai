@@ -29,7 +29,8 @@ describe('ExportService language behavior', () => {
 			hasValidSession: vi.fn().mockResolvedValue(true),
 			getContext: vi.fn().mockResolvedValue({ orgId: 'org-1' }),
 			getOrganizations: vi.fn().mockResolvedValue([{ id: 'org-1' }]),
-			getAccessToken: vi.fn().mockResolvedValue('token')
+			getAccessToken: vi.fn().mockResolvedValue('token'),
+			clearBriefTasks: vi.fn().mockResolvedValue(0)
 		} as unknown as AuthManager;
 
 		service = new ExportService(configManager, authManager);
@@ -161,6 +162,38 @@ describe('ExportService language behavior', () => {
 
 		expect(firstRequestBody.tasks).toHaveLength(100);
 		expect(secondRequestBody.tasks).toHaveLength(20);
+	});
+
+	it('clears existing brief tasks before import when mode is replace', async () => {
+		const clearBriefTasksMock = vi.mocked(authManager.clearBriefTasks);
+		const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+			const payload = JSON.parse(String(init?.body ?? '{}'));
+			const batchSize = payload.tasks?.length ?? 0;
+
+			return createJsonResponse(200, {
+				dryRun: false,
+				totalTasks: batchSize,
+				successCount: batchSize,
+				failedCount: 0,
+				skippedCount: 0,
+				results: [],
+				summary: {
+					message: 'ok',
+					duration: 1
+				}
+			});
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		const result = await service.exportTasks({
+			orgId: 'org-1',
+			briefId: 'brief-1',
+			mode: 'replace'
+		});
+
+		expect(result.success).toBe(true);
+		expect(clearBriefTasksMock).toHaveBeenCalledWith('brief-1');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 });
 

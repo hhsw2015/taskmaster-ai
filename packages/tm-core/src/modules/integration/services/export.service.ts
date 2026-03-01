@@ -327,6 +327,8 @@ export interface ExportTasksOptions {
 	briefId?: string;
 	/** Organization ID (required if briefId is provided) */
 	orgId?: string;
+	/** Sync mode: append keeps existing brief tasks, replace clears them first */
+	mode?: 'append' | 'replace';
 	/** Filter by task status */
 	status?: TaskStatus;
 	/** Exclude subtasks from export (default: false, subtasks included by default) */
@@ -415,6 +417,7 @@ export class ExportService {
 		// Get tasks from the specified or active tag
 		const activeTag = this.configManager.getActiveTag();
 		const tag = options.tag || activeTag;
+		const mode = options.mode || 'append';
 
 		// Always read tasks from local file storage for export
 		// (we're exporting local tasks to a remote brief)
@@ -455,14 +458,14 @@ export class ExportService {
 		try {
 			// Call the export API with the original tasks
 			// performExport will handle the transformation based on the method used
-			await this.performExport(orgId, briefId, taskListResult.tasks);
+			await this.performExport(orgId, briefId, taskListResult.tasks, mode);
 
 			return {
 				success: true,
 				taskCount: taskListResult.tasks.length,
 				briefId,
 				orgId,
-				message: `Successfully exported ${taskListResult.tasks.length} task(s) to brief`
+				message: `Successfully exported ${taskListResult.tasks.length} task(s) to brief (${mode})`
 			};
 		} catch (error) {
 			const errorMessage =
@@ -692,7 +695,8 @@ export class ExportService {
 	private async performExport(
 		orgId: string,
 		briefId: string,
-		tasks: any[]
+		tasks: any[],
+		mode: 'append' | 'replace'
 	): Promise<void> {
 		// Use AuthDomain to get the properly formatted API base URL
 		const authDomain = new AuthDomain();
@@ -720,6 +724,10 @@ export class ExportService {
 			const accessToken = await this.authManager.getAccessToken();
 			if (!accessToken) {
 				throw new Error('Not authenticated');
+			}
+
+			if (mode === 'replace') {
+				await this.clearBriefTasksForReplaceSync(briefId);
 			}
 
 			let totalSuccessCount = 0;
@@ -779,7 +787,7 @@ export class ExportService {
 			const batchSuffix =
 				taskBatches.length > 1 ? ` in ${taskBatches.length} batches` : '';
 			console.log(
-				`Successfully exported ${totalSuccessCount} of ${flatTasks.length} tasks to brief ${briefId}${batchSuffix}`
+				`Successfully exported ${totalSuccessCount} of ${flatTasks.length} tasks to brief ${briefId}${batchSuffix} (${mode})`
 			);
 		} else {
 			// Direct Supabase approach is no longer supported
@@ -787,6 +795,15 @@ export class ExportService {
 			// as we now exclusively use the API endpoint for exports
 			throw new Error(
 				'Export API endpoint not configured. Please set TM_PUBLIC_BASE_DOMAIN environment variable to enable task export.'
+			);
+		}
+	}
+
+	private async clearBriefTasksForReplaceSync(briefId: string): Promise<void> {
+		const removedCount = await this.authManager.clearBriefTasks(briefId);
+		if (removedCount > 0) {
+			console.log(
+				`Cleared ${removedCount} existing task(s) from brief ${briefId} before replace sync`
 			);
 		}
 	}
