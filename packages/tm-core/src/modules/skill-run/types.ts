@@ -8,6 +8,7 @@ export interface SkillRunPaths {
 	agentsPath: string;
 	skillAgentsPath: string;
 	skillPath: string;
+	skillAssetsDir: string;
 	sessionDir: string;
 	specPath: string;
 	progressPath: string;

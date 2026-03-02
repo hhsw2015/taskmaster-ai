@@ -41,6 +41,30 @@ describe('SkillRunService', () => {
 			'taskmaster-longrun',
 			'AGENTS.md'
 		);
+		const specAssetPath = path.join(
+			tmpDir,
+			'.codex',
+			'skills',
+			'taskmaster-longrun',
+			'assets',
+			'SPEC_TEMPLATE.md'
+		);
+		const progressAssetPath = path.join(
+			tmpDir,
+			'.codex',
+			'skills',
+			'taskmaster-longrun',
+			'assets',
+			'PROGRESS_TEMPLATE.md'
+		);
+		const todoAssetPath = path.join(
+			tmpDir,
+			'.codex',
+			'skills',
+			'taskmaster-longrun',
+			'assets',
+			'todo_template.csv'
+		);
 		const specPath = path.join(
 			tmpDir,
 			'.codex-tasks',
@@ -56,6 +80,9 @@ describe('SkillRunService', () => {
 		const agents = await readFile(agentsPath, 'utf-8');
 		const skill = await readFile(skillPath, 'utf-8');
 		const upstreamAgents = await readFile(upstreamAgentsPath, 'utf-8');
+		const specAsset = await readFile(specAssetPath, 'utf-8');
+		const progressAsset = await readFile(progressAssetPath, 'utf-8');
+		const todoAsset = await readFile(todoAssetPath, 'utf-8');
 		const spec = await readFile(specPath, 'utf-8');
 		const progress = await readFile(progressPath, 'utf-8');
 		expect(agents.match(/TM-LONGRUN-START/g)?.length).toBe(1);
@@ -65,6 +92,9 @@ describe('SkillRunService', () => {
 		expect(skill).toContain('Taskmaster Integration Addendum');
 		expect(skill).toContain('must not mutate Taskmaster status');
 		expect(upstreamAgents).toContain('Global Agent Rules');
+		expect(specAsset).toContain('# SPEC');
+		expect(progressAsset).toContain('# PROGRESS');
+		expect(todoAsset).toContain('id,task,status');
 		expect(spec).toContain('# SPEC');
 		expect(progress).toContain('# PROGRESS');
 	});

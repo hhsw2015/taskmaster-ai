@@ -56,6 +56,11 @@ Use Taskmaster as the source of truth and execute one task at a time with Codex 
 
 const DEFAULT_SKILL_TEMPLATE = `${SKILL_FRONTMATTER}\n\n${DEFAULT_SKILL_BODY}`;
 
+const DEFAULT_SPEC_TEMPLATE = `# SPEC
+
+Frozen goal for this longrun session. It will be refreshed from Taskmaster tasks when run starts.
+`;
+
 const DEFAULT_PROGRESS_TEMPLATE = `# PROGRESS
 
 Decision log and audit trail for this longrun session.
@@ -63,10 +68,19 @@ Decision log and audit trail for this longrun session.
 ## Entries
 `;
 
+const DEFAULT_TODO_TEMPLATE = `id,task,status,acceptance_criteria,validation_command,completed_at,retry_count,notes
+`;
+
 const UPSTREAM_TASKMASTER_SKILL_URL =
 	'https://raw.githubusercontent.com/lili-luo/aicoding-cookbook/refs/heads/main/skills/codex/taskmaster/SKILL.md';
 const UPSTREAM_CODEX_AGENTS_URL =
 	'https://raw.githubusercontent.com/lili-luo/aicoding-cookbook/refs/heads/main/skills/codex/AGENTS.md';
+const UPSTREAM_TASKMASTER_ASSET_SPEC_URL =
+	'https://raw.githubusercontent.com/lili-luo/aicoding-cookbook/refs/heads/main/skills/codex/taskmaster/assets/SPEC_TEMPLATE.md';
+const UPSTREAM_TASKMASTER_ASSET_PROGRESS_URL =
+	'https://raw.githubusercontent.com/lili-luo/aicoding-cookbook/refs/heads/main/skills/codex/taskmaster/assets/PROGRESS_TEMPLATE.md';
+const UPSTREAM_TASKMASTER_ASSET_TODO_URL =
+	'https://raw.githubusercontent.com/lili-luo/aicoding-cookbook/refs/heads/main/skills/codex/taskmaster/assets/todo_template.csv';
 
 const FALLBACK_UPSTREAM_AGENTS = `# Global Agent Rules
 
@@ -176,10 +190,12 @@ export class SkillRunService {
 				'SKILL.md'
 			);
 		const skillAgentsPath = path.join(path.dirname(skillPath), 'AGENTS.md');
+		const skillAssetsDir = path.join(path.dirname(skillPath), 'assets');
 		return {
 			agentsPath,
 			skillAgentsPath,
 			skillPath,
+			skillAssetsDir,
 			sessionDir,
 			specPath: path.join(sessionDir, 'SPEC.md'),
 			progressPath: path.join(sessionDir, 'PROGRESS.md'),
@@ -216,9 +232,20 @@ export class SkillRunService {
 		);
 		await this.ensureUpstreamAgentsTemplate(paths.skillAgentsPath, result);
 		await this.ensureSkillTemplate(paths.skillPath, result);
+		await this.ensureSkillAssetTemplates(paths.skillAssetsDir, result);
 		if (mode === 'full') {
-			await this.ensureSpecTemplate(paths.specPath, result);
-			await this.ensureProgressTemplate(paths.progressPath, result);
+			const specTemplate = await this.getSkillAssetTemplate(
+				paths.skillAssetsDir,
+				'SPEC_TEMPLATE.md',
+				DEFAULT_SPEC_TEMPLATE
+			);
+			const progressTemplate = await this.getSkillAssetTemplate(
+				paths.skillAssetsDir,
+				'PROGRESS_TEMPLATE.md',
+				DEFAULT_PROGRESS_TEMPLATE
+			);
+			await this.ensureSpecTemplate(paths.specPath, result, specTemplate);
+			await this.ensureProgressTemplate(paths.progressPath, result, progressTemplate);
 		}
 		return result;
 	}
@@ -725,28 +752,82 @@ ${RESULT_PREFIX} {"status":"done|failed","validation":"pass|fail|unknown","summa
 		}
 	}
 
-	private async ensureSpecTemplate(filePath: string, result: SkillRunInitResult): Promise<void> {
-		if (await this.fileExists(filePath)) {
-			result.skipped.push(path.relative(this.projectRoot, filePath));
-			return;
-		}
-		await writeFile(
-			filePath,
-			'# SPEC\n\nFrozen goal for this longrun session. It will be refreshed from Taskmaster tasks when run starts.\n',
-			'utf-8'
+	private async ensureSkillAssetTemplates(
+		assetsDir: string,
+		result: SkillRunInitResult
+	): Promise<void> {
+		await mkdir(assetsDir, { recursive: true });
+		await this.ensureSkillAssetTemplate(
+			path.join(assetsDir, 'SPEC_TEMPLATE.md'),
+			UPSTREAM_TASKMASTER_ASSET_SPEC_URL,
+			DEFAULT_SPEC_TEMPLATE,
+			result
 		);
-		result.created.push(path.relative(this.projectRoot, filePath));
+		await this.ensureSkillAssetTemplate(
+			path.join(assetsDir, 'PROGRESS_TEMPLATE.md'),
+			UPSTREAM_TASKMASTER_ASSET_PROGRESS_URL,
+			DEFAULT_PROGRESS_TEMPLATE,
+			result
+		);
+		await this.ensureSkillAssetTemplate(
+			path.join(assetsDir, 'todo_template.csv'),
+			UPSTREAM_TASKMASTER_ASSET_TODO_URL,
+			DEFAULT_TODO_TEMPLATE,
+			result
+		);
 	}
 
-	private async ensureProgressTemplate(
+	private async ensureSkillAssetTemplate(
 		filePath: string,
+		url: string,
+		fallback: string,
 		result: SkillRunInitResult
 	): Promise<void> {
 		if (await this.fileExists(filePath)) {
 			result.skipped.push(path.relative(this.projectRoot, filePath));
 			return;
 		}
-		await writeFile(filePath, DEFAULT_PROGRESS_TEMPLATE, 'utf-8');
+		const remote = await this.loadRemoteTemplate(url, fallback);
+		await writeFile(filePath, remote, 'utf-8');
+		result.created.push(path.relative(this.projectRoot, filePath));
+	}
+
+	private async getSkillAssetTemplate(
+		assetsDir: string,
+		fileName: string,
+		fallback: string
+	): Promise<string> {
+		const filePath = path.join(assetsDir, fileName);
+		const existing = await this.safeRead(filePath);
+		if (!existing || existing.trim().length === 0) {
+			return fallback;
+		}
+		return existing;
+	}
+
+	private async ensureSpecTemplate(
+		filePath: string,
+		result: SkillRunInitResult,
+		template: string
+	): Promise<void> {
+		if (await this.fileExists(filePath)) {
+			result.skipped.push(path.relative(this.projectRoot, filePath));
+			return;
+		}
+		await writeFile(filePath, template, 'utf-8');
+		result.created.push(path.relative(this.projectRoot, filePath));
+	}
+
+	private async ensureProgressTemplate(
+		filePath: string,
+		result: SkillRunInitResult,
+		template: string
+	): Promise<void> {
+		if (await this.fileExists(filePath)) {
+			result.skipped.push(path.relative(this.projectRoot, filePath));
+			return;
+		}
+		await writeFile(filePath, template, 'utf-8');
 		result.created.push(path.relative(this.projectRoot, filePath));
 	}
 
