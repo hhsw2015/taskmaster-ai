@@ -10,6 +10,7 @@ import { ConfigManager } from './modules/config/managers/config-manager.js';
 import { GitDomain } from './modules/git/git-domain.js';
 import { IntegrationDomain } from './modules/integration/integration-domain.js';
 import { LoopDomain } from './modules/loop/loop-domain.js';
+import { SkillRunDomain } from './modules/skill-run/skill-run-domain.js';
 import { TasksDomain } from './modules/tasks/tasks-domain.js';
 import { WorkflowDomain } from './modules/workflow/workflow-domain.js';
 
@@ -89,6 +90,7 @@ export class TmCore {
 	private _config!: ConfigDomain;
 	private _integration!: IntegrationDomain;
 	private _loop!: LoopDomain;
+	private _skillRun!: SkillRunDomain;
 
 	// Public readonly getters
 	get tasks(): TasksDomain {
@@ -111,6 +113,9 @@ export class TmCore {
 	}
 	get loop(): LoopDomain {
 		return this._loop;
+	}
+	get skillRun(): SkillRunDomain {
+		return this._skillRun;
 	}
 	get logger(): Logger {
 		return this._logger;
@@ -182,6 +187,7 @@ export class TmCore {
 			this._config = new ConfigDomain(this._configManager);
 			this._integration = new IntegrationDomain(this._configManager);
 			this._loop = new LoopDomain(this._configManager);
+			this._skillRun = new SkillRunDomain(this._configManager);
 
 			// Initialize domains that need async setup
 			await this._tasks.initialize();
@@ -189,6 +195,8 @@ export class TmCore {
 			// Wire up cross-domain dependencies
 			// WorkflowDomain needs TasksDomain for status updates
 			this._workflow.setTasksDomain(this._tasks);
+			// SkillRunDomain needs TasksDomain for scheduling and status updates
+			this._skillRun.setTasksDomain(this._tasks);
 
 			// Log successful initialization
 			this._logger.info('TmCore initialized successfully');

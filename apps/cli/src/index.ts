@@ -16,6 +16,7 @@ export { SyncCommand } from './commands/sync.command.js';
 export { TagsCommand } from './commands/tags.command.js';
 export { BriefsCommand } from './commands/briefs.command.js';
 export { LoopCommand } from './commands/loop.command.js';
+export { CodexCommand } from './commands/codex/index.js';
 
 // Command Registry
 export {

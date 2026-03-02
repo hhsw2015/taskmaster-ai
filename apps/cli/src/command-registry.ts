@@ -8,6 +8,7 @@ import type { Command } from 'commander';
 import { AuthCommand } from './commands/auth.command.js';
 import { AutopilotCommand } from './commands/autopilot/index.js';
 import { BriefsCommand } from './commands/briefs.command.js';
+import { CodexCommand } from './commands/codex/index.js';
 import { ContextCommand } from './commands/context.command.js';
 import { ExportCommand, ExportTagCommand } from './commands/export.command.js';
 import { GenerateCommand } from './commands/generate.command.js';
@@ -101,6 +102,12 @@ export class CommandRegistry {
 			name: 'loop',
 			description: 'Run coding agent CLI in a loop, one task per iteration',
 			commandClass: LoopCommand as any,
+			category: 'development'
+		},
+		{
+			name: 'codex',
+			description: 'Codex native extension commands (skill init/run)',
+			commandClass: CodexCommand as any,
 			category: 'development'
 		},
 

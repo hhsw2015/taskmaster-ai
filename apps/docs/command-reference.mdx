@@ -280,4 +280,47 @@ description: "A comprehensive reference of all available Task Master commands"
 
     Each iteration spawns a fresh Claude Code session, avoiding context fatigue. See [Loop Command](/capabilities/loop) for full documentation.
   </Accordion>
+
+  <Accordion title="Codex Skill Longrun (Taskmaster + AGENTS + Skill)">
+    ```bash
+    # Initialize assets (idempotent)
+    task-master codex init
+
+    # Same command via alias
+    task-master skill-run init
+
+    # Use existing lowercase agent.md instead of creating AGENTS.md
+    task-master codex init --agents-path agent.md
+
+    # Protect existing AGENTS file: skip/append/fail
+    task-master codex init --agents-mode fail
+    task-master codex init --agents-mode skip
+    task-master codex init --agents-mode append
+
+    # Start longrun execution (foreground streaming)
+    task-master codex run --tag master --max-retries 3 --model gpt-5.3-codex --reasoning-effort xhigh
+
+    # Optional safety guards
+    task-master codex run --tag master --exec-idle-timeout-ms 900000
+    task-master codex run --tag master --exec-hard-timeout-ms 7200000
+    task-master codex run --tag master --exec-hard-timeout-ms 0   # disable hard timeout
+    task-master codex run --tag master --no-terminate-on-result
+
+    # Explicit mode selection
+    task-master codex run --mode full --tag master
+    task-master codex run --mode lite --tag master
+    task-master codex run --mode auto --tag master
+
+    # LITE mode output: ./TODO.csv
+    # FULL mode output: ./.codex-tasks/taskmaster-longrun/{SPEC.md,TODO.csv,PROGRESS.md}
+    # AUTO currently behaves like FULL at runner level; Skill context remains loaded for model-side behavior.
+
+    # Same start command via aliases
+    task-master skill-run run --tag master
+    task-master codex start --tag master
+    task-master skill-run start --tag master
+    ```
+
+    `codex run/start` will initialize assets first, then execute one Taskmaster task per `codex exec` call, writing runtime artifacts under `.codex-tasks/taskmaster-longrun/`.
+  </Accordion>
 </AccordionGroup>

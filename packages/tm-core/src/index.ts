@@ -162,6 +162,24 @@ export type {
 } from './modules/loop/index.js';
 export { LoopDomain, PRESET_NAMES } from './modules/loop/index.js';
 
+// Skill-run types
+export type {
+	AgentsHookMode,
+	SkillRunMode,
+	SkillRunPaths,
+	SkillRunInitOptions,
+	SkillRunInitResult,
+	LedgerStatus,
+	LedgerEntry,
+	CheckpointState,
+	TaskmasterMap,
+	TaskmasterMapRow,
+	SkillRunCallbacks,
+	SkillRunOptions,
+	SkillRunResult
+} from './modules/skill-run/index.js';
+export { SkillRunDomain } from './modules/skill-run/index.js';
+
 // Prompts types
 export type {
 	PromptAction,
