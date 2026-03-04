@@ -217,6 +217,9 @@ description: "A comprehensive reference of all available Task Master commands"
     ```bash
     # Initialize a new project with Task Master structure
     task-master init
+
+    # Initialize project + Codex longrun assets in one step
+    task-master init --with-codex
     ```
   </Accordion>
 
@@ -289,8 +292,8 @@ description: "A comprehensive reference of all available Task Master commands"
     # Same command via alias
     task-master skill-run init
 
-    # Use existing lowercase agent.md instead of creating AGENTS.md
-    task-master codex init --agents-path agent.md
+    # Use custom AGENTS path
+    task-master codex init --agents-path AGENTS.md
 
     # Protect existing AGENTS file: skip/append/fail
     task-master codex init --agents-mode fail

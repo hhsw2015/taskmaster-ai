@@ -18,7 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
 import { authenticateWithBrowserMFA, ensureOrgSelected, ui } from '@tm/cli';
-import { AuthManager } from '@tm/core';
+import { AuthManager, createTmCore } from '@tm/core';
 import boxen from 'boxen';
 import chalk from 'chalk';
 import figlet from 'figlet';
@@ -113,6 +113,107 @@ function log(level, ...args) {
 	if (process.env.DEBUG === 'true') {
 		const logMessage = `[${level.toUpperCase()}] ${args.join(' ')}\n`;
 		fs.appendFileSync('init-debug.log', logMessage);
+	}
+}
+
+function toRelativePosixPath(projectRoot, absolutePath) {
+	return path.relative(projectRoot, absolutePath).split(path.sep).join('/');
+}
+
+function buildCodexLoadHints(projectRoot, paths) {
+	return [
+		`@${toRelativePosixPath(projectRoot, paths.skillAgentsPath)}`,
+		`@${toRelativePosixPath(projectRoot, paths.skillPath)}`
+	];
+}
+
+async function maybeInitializeCodexAssets(projectRoot, options = {}, dryRun = false) {
+	if (!options.withCodex) {
+		return null;
+	}
+
+	const fallbackPaths = {
+		agentsPath: path.join(projectRoot, 'AGENTS.md'),
+		skillPath: path.join(
+			projectRoot,
+			'.codex',
+			'skills',
+			'taskmaster-longrun',
+			'SKILL.md'
+		),
+		skillAgentsPath: path.join(
+			projectRoot,
+			'.codex',
+			'skills',
+			'taskmaster-longrun',
+			'AGENTS.md'
+		)
+	};
+
+	if (dryRun) {
+		return {
+			enabled: true,
+			skipped: true,
+			reason: 'dry-run',
+			paths: fallbackPaths,
+			loadHints: buildCodexLoadHints(projectRoot, fallbackPaths)
+		};
+	}
+
+	let tmCore;
+	try {
+		tmCore = await createTmCore({ projectPath: projectRoot });
+		const result = await tmCore.skillRun.initAssets({});
+		return {
+			enabled: true,
+			initialized: true,
+			paths: result.paths,
+			created: result.created ?? [],
+			updated: result.updated ?? [],
+			skipped: result.skipped ?? [],
+			loadHints: buildCodexLoadHints(projectRoot, result.paths)
+		};
+	} catch (error) {
+		log('warn', `Codex asset initialization failed: ${error.message}`);
+		log('warn', 'You can retry with: task-master codex init');
+		return {
+			enabled: true,
+			initialized: false,
+			error: error.message,
+			paths: fallbackPaths,
+			loadHints: buildCodexLoadHints(projectRoot, fallbackPaths)
+		};
+	} finally {
+		if (tmCore) {
+			try {
+				await tmCore.close();
+			} catch (closeError) {
+				log('debug', `Failed to close tm-core after codex init: ${closeError.message}`);
+			}
+		}
+	}
+}
+
+function displayCodexLoadHints(codexInfo) {
+	if (!codexInfo || isSilentMode()) {
+		return;
+	}
+
+	const title = codexInfo.initialized
+		? 'Codex longrun assets ready (--with-codex).'
+		: 'Codex longrun assets were not fully initialized.';
+	const color = codexInfo.initialized ? chalk.green : chalk.yellow;
+	console.log(color(title));
+	console.log(
+		chalk.white(
+			`  Ask Codex to load: ${codexInfo.loadHints[0]} then ${codexInfo.loadHints[1]}`
+		)
+	);
+	// Machine-readable action lines for CLI-driven LLM flows.
+	console.log(`TM_IMMEDIATE_ACTION: LOAD ${codexInfo.loadHints[0]}`);
+	console.log(`TM_IMMEDIATE_ACTION: LOAD ${codexInfo.loadHints[1]}`);
+	if (codexInfo.error) {
+		console.log(chalk.yellow(`  Detail: ${codexInfo.error}`));
 	}
 }
 
@@ -375,16 +476,24 @@ async function initializeProject(options = {}) {
 		const selectedStorage = options.storage || 'local';
 		const authCredentials = null; // No auth in non-interactive mode
 
-			await createProjectStructure(
-				true, // Always add aliases
-				initGit,
-				storeTasksInGit,
-				dryRun,
-				{ ...options, preferredLanguage: 'Chinese' }, // Default to Chinese in non-interactive mode
-				selectedRuleProfiles,
-				selectedStorage,
-				authCredentials
-			);
+		await createProjectStructure(
+			true, // Always add aliases
+			initGit,
+			storeTasksInGit,
+			dryRun,
+			{ ...options, preferredLanguage: 'Chinese' }, // Default to Chinese in non-interactive mode
+			selectedRuleProfiles,
+			selectedStorage,
+			authCredentials
+		);
+
+		const codexInfo = await maybeInitializeCodexAssets(
+			process.cwd(),
+			options,
+			dryRun
+		);
+		displayCodexLoadHints(codexInfo);
+		return codexInfo ? { codex: codexInfo } : {};
 	} else {
 		// Interactive logic
 		log('debug', 'Required options not provided, proceeding with prompts.');
@@ -650,7 +759,14 @@ async function initializeProject(options = {}) {
 				selectedStorage,
 				authCredentials
 			);
+			const codexInfo = await maybeInitializeCodexAssets(
+				process.cwd(),
+				options,
+				dryRun
+			);
+			displayCodexLoadHints(codexInfo);
 			rl.close();
+			return codexInfo ? { codex: codexInfo } : {};
 		} catch (error) {
 			if (rl) {
 				rl.close();

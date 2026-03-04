@@ -26,6 +26,19 @@ consoleMethods.forEach((method) => {
 });
 
 // Mock ES modules using unstable_mockModule
+const mockInitAssets = jest.fn();
+const mockTmCoreClose = jest.fn();
+const mockCreateTmCore = jest.fn();
+
+jest.unstable_mockModule('@tm/core', () => ({
+	AuthManager: {
+		getInstance: jest.fn(() => ({
+			getAuthCredentials: jest.fn()
+		}))
+	},
+	createTmCore: mockCreateTmCore
+}));
+
 jest.unstable_mockModule('../../scripts/modules/utils.js', () => ({
 	isSilentMode: jest.fn(() => true),
 	enableSilentMode: jest.fn(),
@@ -97,6 +110,33 @@ describe('initializeProject – Git / Alias flag logic', () => {
 
 	beforeEach(() => {
 		jest.clearAllMocks();
+		mockInitAssets.mockResolvedValue({
+			paths: {
+				agentsPath: path.join(tmpDir || '/tmp/project', 'AGENTS.md'),
+				skillAgentsPath: path.join(
+					tmpDir || '/tmp/project',
+					'.codex/skills/taskmaster-longrun/AGENTS.md'
+				),
+				skillPath: path.join(
+					tmpDir || '/tmp/project',
+					'.codex/skills/taskmaster-longrun/SKILL.md'
+				),
+				sessionDir: path.join(
+					tmpDir || '/tmp/project',
+					'.codex-tasks/taskmaster-longrun'
+				)
+			},
+			created: [],
+			updated: [],
+			skipped: []
+		});
+		mockTmCoreClose.mockResolvedValue(undefined);
+		mockCreateTmCore.mockImplementation(async () => ({
+			skillRun: {
+				initAssets: mockInitAssets
+			},
+			close: mockTmCoreClose
+		}));
 
 		// Set up basic fs mocks
 		mockFs.mkdirSync.mockImplementation(() => {});
@@ -479,6 +519,39 @@ describe('initializeProject – Git / Alias flag logic', () => {
 					dryRun: false
 				})
 			).resolves.not.toThrow();
+		});
+
+		it('initializes codex assets when withCodex is enabled', async () => {
+			const result = await initializeProject({
+				...baseOptions,
+				withCodex: true,
+				git: false,
+				aliases: false,
+				dryRun: false
+			});
+
+			expect(result).toEqual(
+				expect.objectContaining({
+					codex: expect.objectContaining({
+						enabled: true,
+						loadHints: [
+							'@.codex/skills/taskmaster-longrun/AGENTS.md',
+							'@.codex/skills/taskmaster-longrun/SKILL.md'
+						]
+					})
+				})
+			);
+		});
+
+		it('does not initialize codex assets unless withCodex is enabled', async () => {
+			const result = await initializeProject({
+				...baseOptions,
+				git: false,
+				aliases: false,
+				dryRun: false
+			});
+
+			expect(result).toEqual({});
 		});
 	});
 

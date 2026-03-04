@@ -11,7 +11,7 @@ import { convertAllRulesToProfileRules } from '../../../../src/utils/rule-transf
 /**
  * Direct function wrapper for initializing a project.
  * Derives target directory from session, sets CWD, and calls core init logic.
- * @param {object} args - Arguments containing initialization options (addAliases, initGit, storeTasksInGit, skipInstall, yes, projectRoot, rules)
+ * @param {object} args - Arguments containing initialization options (addAliases, initGit, storeTasksInGit, skipInstall, withCodex, yes, projectRoot, rules)
  * @param {object} log - The FastMCP logger instance.
  * @param {object} context - The context object, must contain { session }.
  * @returns {Promise<{success: boolean, data?: any, error?: {code: string, message: string}}>} - Standard result object.
@@ -69,6 +69,7 @@ export async function initializeProjectDirect(args, log, context = {}) {
 			initGit: args.initGit,
 			storeTasksInGit: args.storeTasksInGit,
 			skipInstall: args.skipInstall,
+			withCodex: args.withCodex,
 			yes: true // Force yes mode
 		};
 
@@ -86,11 +87,22 @@ export async function initializeProjectDirect(args, log, context = {}) {
 
 		log.info(`Initializing project with options: ${JSON.stringify(options)}`);
 		const result = await initializeProject(options); // Call core logic
+		const codexLoadHints = result?.codex?.loadHints || [];
+		const codexNextStep =
+			args.withCodex && codexLoadHints.length >= 2
+				? ` Immediate action for Codex CLI: load ${codexLoadHints[0]} first, then ${codexLoadHints[1]}, and only then proceed with task execution.`
+				: '';
+		const codexImmediateAction =
+			args.withCodex && codexLoadHints.length >= 2
+				? `Load ${codexLoadHints[0]} -> load ${codexLoadHints[1]} -> continue`
+				: undefined;
 
 		resultData = {
 			message: 'Project initialized successfully.',
 			next_step:
-				'Now that the project is initialized, the next step is to create the tasks by parsing a PRD. This will create the tasks folder and the initial task files (tasks folder will be created when parse-prd is run). The parse-prd tool will require a prd.txt file as input (typically found in .taskmaster/docs/ directory). You can create a prd.txt file by asking the user about their idea, and then using the .taskmaster/templates/example_prd.txt file as a template to generate a prd.txt file in .taskmaster/docs/. You may skip all of this if the user already has a prd.txt file. You can THEN use the parse-prd tool to create the tasks. So: step 1 after initialization is to create a prd.txt file in .taskmaster/docs/prd.txt or confirm the user already has one. Step 2 is to use the parse-prd tool to create the tasks. Do not bother looking for tasks after initialization, just use the parse-prd tool to create the tasks after creating a prd.txt from which to parse the tasks. You do NOT need to reinitialize the project to parse-prd.',
+				'Now that the project is initialized, the next step is to create the tasks by parsing a PRD. This will create the tasks folder and the initial task files (tasks folder will be created when parse-prd is run). The parse-prd tool will require a prd.txt file as input (typically found in .taskmaster/docs/ directory). You can create a prd.txt file by asking the user about their idea, and then using the .taskmaster/templates/example_prd.txt file as a template to generate a prd.txt file in .taskmaster/docs/. You may skip all of this if the user already has a prd.txt file. You can THEN use the parse-prd tool to create the tasks. So: step 1 after initialization is to create a prd.txt file in .taskmaster/docs/prd.txt or confirm the user already has one. Step 2 is to use the parse-prd tool to create the tasks. Do not bother looking for tasks after initialization, just use the parse-prd tool to create the tasks after creating a prd.txt from which to parse the tasks. You do NOT need to reinitialize the project to parse-prd.' +
+				codexNextStep,
+			immediate_action: codexImmediateAction,
 			...result
 		};
 		success = true;

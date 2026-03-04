@@ -11,7 +11,7 @@ export function registerInitializeProjectTool(server) {
 	server.addTool({
 		name: 'initialize_project',
 		description:
-			'Initializes a new Task Master project structure by calling the core initialization logic. Creates necessary folders and configuration files for Task Master in the current directory.',
+			'Initializes a new Task Master project structure by calling the core initialization logic. Creates necessary folders and configuration files for Task Master in the current directory. If you are using Codex CLI, set withCodex=true (and keep yes=true) so Codex longrun assets are created in the same step.',
 		parameters: z.object({
 			skipInstall: z
 				.boolean()
@@ -43,6 +43,13 @@ export function registerInitializeProjectTool(server) {
 				.default(true)
 				.describe(
 					'Skip prompts and use default values. Always set to true for MCP tools.'
+				),
+			withCodex: z
+				.boolean()
+				.optional()
+				.default(false)
+				.describe(
+					'Initialize Codex longrun assets together with project init. For Codex CLI workflows, set this to true.'
 				),
 			projectRoot: z
 				.string()

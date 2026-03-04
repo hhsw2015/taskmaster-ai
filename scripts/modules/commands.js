@@ -3564,6 +3564,10 @@ ${result.result}
 		)
 		.option('--skip-install', 'Skip installing dependencies')
 		.option('--dry-run', 'Show what would be done without making changes')
+		.option(
+			'--with-codex',
+			'Also initialize Codex longrun assets (AGENTS + Skill)'
+		)
 		.option('--aliases', 'Add shell aliases (tm, taskmaster, hamster, ham)')
 		.option('--no-aliases', 'Skip shell aliases (tm, taskmaster, hamster, ham)')
 		.option('--git', 'Initialize Git repository')
