@@ -28,6 +28,8 @@ describe('Codex InitCommand', () => {
 				initAssets: vi.fn().mockResolvedValue({
 					paths: {
 						agentsPath: '/tmp/project/AGENTS.md',
+						skillAgentsPath:
+							'/tmp/project/.codex/skills/taskmaster-longrun/AGENTS.md',
 						skillPath: '/tmp/project/.codex/skills/taskmaster-longrun/SKILL.md',
 						sessionDir: '/tmp/project/.codex-tasks/taskmaster-longrun'
 					},
@@ -61,6 +63,37 @@ describe('Codex InitCommand', () => {
 			agentsMode: 'fail',
 			mode: 'lite',
 			sessionDir: '.codex-tasks/custom'
-		});
+			});
+	});
+
+	it('prints machine-readable load hints in text mode', async () => {
+		const command = new InitCommand();
+		await (command as any).execute({});
+
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining(
+				'TM_IMMEDIATE_ACTION: LOAD @.codex/skills/taskmaster-longrun/AGENTS.md'
+			)
+		);
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining(
+				'TM_IMMEDIATE_ACTION: LOAD @.codex/skills/taskmaster-longrun/SKILL.md'
+			)
+		);
+	});
+
+	it('returns load hints and immediate action in json mode', async () => {
+		const command = new InitCommand();
+		await (command as any).execute({ json: true });
+		const calls = (console.log as any).mock.calls;
+		const jsonOutput = calls[calls.length - 1][0];
+		const parsed = JSON.parse(jsonOutput);
+		expect(parsed.loadHints).toEqual([
+			'@.codex/skills/taskmaster-longrun/AGENTS.md',
+			'@.codex/skills/taskmaster-longrun/SKILL.md'
+		]);
+		expect(parsed.immediate_action).toContain(
+			'@.codex/skills/taskmaster-longrun/AGENTS.md'
+		);
 	});
 });
