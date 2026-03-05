@@ -335,6 +335,34 @@ describe('TaskMapper', () => {
 			).toBe('done');
 		});
 
+		it('should restore status override from metadata for parent tasks', () => {
+			const blockedTask = createMockTaskRow({
+				status: 'in_progress',
+				metadata: { taskMasterStatus: 'blocked' }
+			});
+			expect(
+				TaskMapper.mapDatabaseTaskToTask(blockedTask, [], new Map()).status
+			).toBe('blocked');
+
+			const cancelledTask = createMockTaskRow({
+				status: 'done',
+				metadata: { taskMasterStatus: 'cancelled' }
+			});
+			expect(
+				TaskMapper.mapDatabaseTaskToTask(cancelledTask, [], new Map()).status
+			).toBe('cancelled');
+		});
+
+		it('should ignore invalid status override and fallback to db status', () => {
+			const task = createMockTaskRow({
+				status: 'in_progress',
+				metadata: { taskMasterStatus: 'not-valid' }
+			});
+			expect(
+				TaskMapper.mapDatabaseTaskToTask(task, [], new Map()).status
+			).toBe('in-progress');
+		});
+
 		it('should map priority correctly', () => {
 			const urgentTask = createMockTaskRow({ priority: 'urgent' });
 			expect(

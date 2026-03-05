@@ -18,6 +18,17 @@ type DependencyRow = Tables<'task_dependencies'> & {
 };
 
 export class TaskMapper {
+	private static readonly TASK_STATUS_OVERRIDES = new Set<Task['status']>([
+		'pending',
+		'in-progress',
+		'done',
+		'deferred',
+		'cancelled',
+		'blocked',
+		'review',
+		'completed'
+	]);
+
 	/**
 	 * Maps database tasks to internal Task format
 	 * @param dbTasks - Array of tasks from database
@@ -62,12 +73,15 @@ export class TaskMapper {
 		// Map subtasks with implementation metadata
 		const subtasks: Subtask[] = dbSubtasks.map((subtask, index) => {
 			const implMeta = this.extractImplementationMetadata(subtask.metadata);
+			const mappedStatus =
+				this.extractTaskMasterStatus(subtask.metadata) ||
+				this.mapStatus(subtask.status);
 			return {
 				id: subtask.display_id || String(index + 1), // Use display_id if available (API storage), fallback to numeric (file storage)
 				parentId: dbTask.id,
 				title: subtask.title,
 				description: subtask.description || '',
-				status: this.mapStatus(subtask.status),
+				status: mappedStatus,
 				priority: this.mapPriority(subtask.priority),
 				dependencies: dependenciesByTaskId.get(subtask.id) || [],
 				details: this.extractMetadataField(subtask.metadata, 'details', ''),
@@ -88,13 +102,15 @@ export class TaskMapper {
 
 		// Extract implementation metadata for the task
 		const implMeta = this.extractImplementationMetadata(dbTask.metadata);
+		const mappedStatus =
+			this.extractTaskMasterStatus(dbTask.metadata) || this.mapStatus(dbTask.status);
 
 		return {
 			id: dbTask.display_id || dbTask.id, // Use display_id if available
 			databaseId: dbTask.id, // Include the actual database UUID
 			title: dbTask.title,
 			description: dbTask.description || '',
-			status: this.mapStatus(dbTask.status),
+			status: mappedStatus,
 			priority: this.mapPriority(dbTask.priority),
 			dependencies: dependenciesByTaskId.get(dbTask.id) || [],
 			details: this.extractMetadataField(dbTask.metadata, 'details', ''),
@@ -246,6 +262,22 @@ export class TaskMapper {
 		}
 		const value = (metadata as Record<string, unknown>)[field];
 		return typeof value === 'string' ? value : undefined;
+	}
+
+	/**
+	 * Restores richer Taskmaster statuses persisted in metadata for API storage.
+	 */
+	private static extractTaskMasterStatus(
+		metadata: unknown
+	): Task['status'] | undefined {
+		const override = this.extractOptionalString(metadata, 'taskMasterStatus');
+		if (!override) {
+			return undefined;
+		}
+		if (this.TASK_STATUS_OVERRIDES.has(override as Task['status'])) {
+			return override as Task['status'];
+		}
+		return undefined;
 	}
 
 	/**

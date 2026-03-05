@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Task } from '../../../../common/types/index.js';
+import { Task, TaskStatus } from '../../../../common/types/index.js';
 import { Database, Json } from '../../../../common/types/database.types.js';
 import { TaskMapper } from '../../../../common/mappers/TaskMapper.js';
 import { AuthManager } from '../../../auth/managers/auth-manager.js';
@@ -203,6 +203,7 @@ export class SupabaseRepository {
 		updates: Partial<Task>
 	): Promise<Task> {
 		const briefId = this.getBriefIdOrThrow();
+		let statusOverride: TaskStatus | undefined;
 
 		// Validate updates using Zod schema
 		try {
@@ -223,8 +224,10 @@ export class SupabaseRepository {
 		if (updates.title !== undefined) dbUpdates.title = updates.title;
 		if (updates.description !== undefined)
 			dbUpdates.description = updates.description;
-		if (updates.status !== undefined)
+		if (updates.status !== undefined) {
 			dbUpdates.status = this.mapStatusToDatabase(updates.status);
+			statusOverride = this.getStatusOverrideForMetadata(updates.status);
+		}
 		if (updates.priority !== undefined)
 			dbUpdates.priority = this.mapPriorityToDatabase(updates.priority);
 
@@ -247,6 +250,14 @@ export class SupabaseRepository {
 		const metadata: Record<string, unknown> = {
 			...((existingMetadataRow?.metadata as Record<string, unknown>) ?? {})
 		};
+
+		if (updates.status !== undefined) {
+			if (statusOverride) {
+				metadata.taskMasterStatus = statusOverride;
+			} else {
+				delete metadata.taskMasterStatus;
+			}
+		}
 
 		if (updates.details !== undefined) metadata.details = updates.details;
 		if (updates.testStrategy !== undefined)
@@ -284,16 +295,36 @@ export class SupabaseRepository {
 	): Database['public']['Enums']['task_status'] {
 		switch (status) {
 			case 'pending':
+			case 'deferred':
 				return 'todo';
 			case 'in-progress':
 			case 'in_progress': // Accept both formats
+			case 'review':
+			case 'blocked':
 				return 'in_progress';
 			case 'done':
+			case 'completed':
+			case 'cancelled':
 				return 'done';
 			default:
 				throw new Error(
-					`Invalid task status: ${status}. Valid statuses are: pending, in-progress, done`
+					`Invalid task status: ${status}. Valid statuses are: pending, in-progress, done, review, deferred, cancelled, blocked`
 				);
+		}
+	}
+
+	/**
+	 * Store non-native cloud statuses in metadata to preserve intent.
+	 */
+	private getStatusOverrideForMetadata(status: string): TaskStatus | undefined {
+		switch (status) {
+			case 'review':
+			case 'deferred':
+			case 'cancelled':
+			case 'blocked':
+				return status;
+			default:
+				return undefined;
 		}
 	}
 
