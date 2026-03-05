@@ -177,6 +177,19 @@ describe('ConfigManager', () => {
 			});
 		});
 
+		it('should normalize legacy local storage type to file', () => {
+			(manager as any).config = {
+				storage: { type: 'local' }
+			};
+
+			const storage = manager.getStorageConfig();
+			expect(storage).toEqual({
+				type: 'file',
+				basePath: testProjectRoot,
+				apiConfigured: false
+			});
+		});
+
 		it('should return API storage configuration when configured', async () => {
 			// Create a new instance with API storage config
 			vi.mocked(ConfigMerger).mockImplementationOnce(function (this: any) {

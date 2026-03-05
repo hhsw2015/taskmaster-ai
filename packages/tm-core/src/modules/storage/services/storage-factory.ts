@@ -22,6 +22,16 @@ import { FileStorage } from '../adapters/file-storage/index.js';
  * Factory for creating storage implementations based on configuration
  */
 export class StorageFactory {
+	private static normalizeStorageType(storageType: unknown): string {
+		if (storageType === 'local') {
+			return 'file';
+		}
+		if (typeof storageType === 'string' && storageType.length > 0) {
+			return storageType;
+		}
+		return 'auto';
+	}
+
 	/**
 	 * Create a storage implementation from runtime storage config
 	 * This is the preferred method when you have a RuntimeStorageConfig
@@ -51,7 +61,9 @@ export class StorageFactory {
 		config: Partial<IConfiguration>,
 		projectPath: string
 	): Promise<IStorage> {
-		const storageType = config.storage?.type || 'auto';
+		const storageType = StorageFactory.normalizeStorageType(
+			(config.storage as { type?: unknown } | undefined)?.type
+		);
 
 		const logger = getLogger('StorageFactory');
 
@@ -213,7 +225,9 @@ export class StorageFactory {
 		errors: string[];
 	} {
 		const errors: string[] = [];
-		const storageType = config.storage?.type;
+		const storageType = StorageFactory.normalizeStorageType(
+			(config.storage as { type?: unknown } | undefined)?.type
+		);
 
 		if (!storageType) {
 			errors.push('Storage type is not specified');

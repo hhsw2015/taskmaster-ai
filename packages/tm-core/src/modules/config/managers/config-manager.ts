@@ -11,6 +11,7 @@ import type {
 	RuntimeStorageConfig
 } from '../../../common/interfaces/configuration.interface.js';
 import { DEFAULT_CONFIG_VALUES as DEFAULTS } from '../../../common/interfaces/configuration.interface.js';
+import type { StorageType } from '../../../common/types/index.js';
 import { ConfigLoader } from '../services/config-loader.service.js';
 import {
 	CONFIG_PRECEDENCE,
@@ -141,8 +142,8 @@ export class ConfigManager {
 	getStorageConfig(): RuntimeStorageConfig {
 		const storage = this.config.storage;
 
-		// Return the configured type (including 'auto')
-		const storageType = storage?.type || 'auto';
+		// Backward compatibility: legacy config used "local" for file storage.
+		const storageType = this.normalizeStorageType(storage?.type);
 		const basePath = storage?.basePath ?? this.projectRoot;
 
 		if (storageType === 'api' || storageType === 'auto') {
@@ -160,6 +161,20 @@ export class ConfigManager {
 			basePath,
 			apiConfigured: false
 		};
+	}
+
+	private normalizeStorageType(storageType: unknown): StorageType {
+		if (storageType === 'local') {
+			return 'file';
+		}
+		if (
+			storageType === 'file' ||
+			storageType === 'api' ||
+			storageType === 'auto'
+		) {
+			return storageType;
+		}
+		return 'auto';
 	}
 
 	/**
