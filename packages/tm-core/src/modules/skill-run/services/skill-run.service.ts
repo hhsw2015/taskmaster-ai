@@ -99,7 +99,7 @@ This addendum defines how this upstream skill is integrated with Task Master CLI
 1. Task source of truth is Taskmaster tasks data.
 2. Execute exactly one Taskmaster task per \`codex exec\` run.
 3. Load order for prompt context:
-   - project AGENTS.md/agent.md
+   - project AGENTS.md
    - .codex/skills/taskmaster-longrun/AGENTS.md
    - .codex/skills/taskmaster-longrun/SKILL.md
 4. Runtime artifacts are managed by the runner:
@@ -257,6 +257,7 @@ export class SkillRunService {
 		const paths = initResult.paths;
 		const checkpoint = await this.loadCheckpoint(paths.checkpointPath);
 		const maxRetries = Math.max(0, options.maxRetries ?? MAX_RETRIES_DEFAULT);
+		const continueOnFailure = options.continueOnFailure ?? true;
 		let totalRuns = 0;
 
 		await this.syncTodoAndMap(options.tag, checkpoint, paths, mode);
@@ -327,28 +328,28 @@ export class SkillRunService {
 					logFile: execResult.logFile,
 					notes: this.combineNotes(outcome.note, retryNote)
 				});
-				callbacks?.onTaskEnd?.({
-					taskId,
-					title: nextTask.title,
-					attempt,
-					status: reachedLimit ? 'BLOCKED' : 'FAILED',
-					exitCode: execResult.exitCode,
-					durationMs: execResult.durationMs,
-					logFile: execResult.logFile
-				});
-				if (!options.continueOnFailure) {
-					await this.saveCheckpoint(paths.checkpointPath, checkpoint);
-					await this.syncTodoAndMap(options.tag, checkpoint, paths, mode);
-					return {
-						completedTaskIds: checkpoint.doneTaskIds,
-						blockedTaskIds: checkpoint.blockedTaskIds,
-						attempts: checkpoint.attempts,
-						totalRuns,
-						finalStatus: 'error',
-						errorMessage: `Task ${taskId} failed and continueOnFailure=false`
-					};
+					callbacks?.onTaskEnd?.({
+						taskId,
+						title: nextTask.title,
+						attempt,
+						status: reachedLimit ? 'BLOCKED' : 'FAILED',
+						exitCode: execResult.exitCode,
+						durationMs: execResult.durationMs,
+						logFile: execResult.logFile
+					});
+					if (!continueOnFailure) {
+						await this.saveCheckpoint(paths.checkpointPath, checkpoint);
+						await this.syncTodoAndMap(options.tag, checkpoint, paths, mode);
+						return {
+							completedTaskIds: checkpoint.doneTaskIds,
+							blockedTaskIds: checkpoint.blockedTaskIds,
+							attempts: checkpoint.attempts,
+							totalRuns,
+							finalStatus: 'error',
+							errorMessage: `Task ${taskId} failed and continueOnFailure=false`
+						};
+					}
 				}
-			}
 
 			await this.saveCheckpoint(paths.checkpointPath, checkpoint);
 			await this.syncTodoAndMap(options.tag, checkpoint, paths, mode);
@@ -391,6 +392,7 @@ export class SkillRunService {
 				cwd: this.projectRoot,
 				stdio: ['ignore', 'pipe', 'pipe']
 			});
+			const showExecutorOutput = options.showExecutorOutput ?? true;
 			let timedOut = false;
 			let timeoutKind: 'idle' | 'hard' | null = null;
 			let timeoutMs: number | null = null;
@@ -470,14 +472,18 @@ export class SkillRunService {
 
 			child.stdout?.on('data', (buf: Buffer) => {
 				const text = buf.toString('utf-8');
-				process.stdout.write(text);
+				if (showExecutorOutput) {
+					process.stdout.write(text);
+				}
 				options.callbacks?.onStdout?.(text);
 				out.write(text);
 				handleOutput(text);
 			});
 			child.stderr?.on('data', (buf: Buffer) => {
 				const text = buf.toString('utf-8');
-				process.stderr.write(text);
+				if (showExecutorOutput) {
+					process.stderr.write(text);
+				}
 				options.callbacks?.onStderr?.(text);
 				out.write(text);
 				handleOutput(text);
@@ -674,7 +680,21 @@ ${RESULT_PREFIX} {"status":"done|failed","validation":"pass|fail|unknown","summa
 		result: SkillRunInitResult,
 		mode: AgentsHookMode
 	): Promise<void> {
-		const block = `${AGENTS_MARK_START}\n## Taskmaster Longrun Hook\nWhen implementation starts, load AGENTS first, then load @.codex/skills/taskmaster-longrun/SKILL.md, then execute one Taskmaster task per Codex run.\n${AGENTS_MARK_END}`;
+		const block = `${AGENTS_MARK_START}
+## Taskmaster Longrun Hook
+When implementation starts, load AGENTS first, then load @.codex/skills/taskmaster-longrun/AGENTS.md, then load @.codex/skills/taskmaster-longrun/SKILL.md.
+For end-to-end execution, invoke task-master codex run once and let the runner auto-advance tasks after status writeback; do not ask for per-task confirmation.
+
+## Taskmaster Quick Triggers
+- 当用户说“拆分任务”时：
+  1) 将当前需求整理并写入 .taskmaster/docs/prd.txt
+  2) 运行 task-master parse-prd --input .taskmaster/docs/prd.txt --force
+  3) 输出任务列表摘要并等待“开始实现”
+- 当用户说“开始实现”时：
+  1) 在当前终端前台运行 task-master codex run（使用当前激活 tag）
+  2) 不逐任务询问确认，连续执行到 all_complete / blocked / error
+  3) 每个任务完成后回写 Taskmaster 状态，并持续输出执行日志
+${AGENTS_MARK_END}`;
 		if (!(await this.fileExists(filePath))) {
 			await writeFile(filePath, `${block}\n`, 'utf-8');
 			result.created.push(path.relative(this.projectRoot, filePath));
@@ -684,7 +704,16 @@ ${RESULT_PREFIX} {"status":"done|failed","validation":"pass|fail|unknown","summa
 		const hasStart = content.includes(AGENTS_MARK_START);
 		const hasEnd = content.includes(AGENTS_MARK_END);
 		if (hasStart && hasEnd) {
-			result.skipped.push(path.relative(this.projectRoot, filePath));
+			const escapedStart = AGENTS_MARK_START.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			const escapedEnd = AGENTS_MARK_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			const hookPattern = new RegExp(`${escapedStart}[\\s\\S]*?${escapedEnd}`, 'm');
+			const next = content.replace(hookPattern, block);
+			if (next === content) {
+				result.skipped.push(path.relative(this.projectRoot, filePath));
+				return;
+			}
+			await writeFile(filePath, `${next.trimEnd()}\n`, 'utf-8');
+			result.updated.push(path.relative(this.projectRoot, filePath));
 			return;
 		}
 		if (hasStart !== hasEnd) {
@@ -1077,10 +1106,6 @@ ${RESULT_PREFIX} {"status":"done|failed","validation":"pass|fail|unknown","summa
 		const agentsUpper = path.join(this.projectRoot, 'AGENTS.md');
 		if (existsSync(agentsUpper)) {
 			return agentsUpper;
-		}
-		const agentsLower = path.join(this.projectRoot, 'agent.md');
-		if (existsSync(agentsLower)) {
-			return agentsLower;
 		}
 		return agentsUpper;
 	}

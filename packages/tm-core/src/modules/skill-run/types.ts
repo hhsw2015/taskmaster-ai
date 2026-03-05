@@ -94,6 +94,7 @@ export interface SkillRunOptions extends SkillRunInitOptions {
 	executor?: string;
 	model?: string;
 	reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+	showExecutorOutput?: boolean;
 	/** @deprecated Use execHardTimeoutMs; kept for compatibility */
 	execTimeoutMs?: number;
 	execIdleTimeoutMs?: number;

@@ -292,6 +292,10 @@ description: "A comprehensive reference of all available Task Master commands"
     # Same command via alias
     task-master skill-run init
 
+    # codex init will auto-inject project-level AGENTS shortcuts:
+    # - "拆分任务" -> parse PRD into tasks
+    # - "开始实现" -> foreground longrun execution with status writeback (uses active tag)
+
     # Use custom AGENTS path
     task-master codex init --agents-path AGENTS.md
 
@@ -308,6 +312,7 @@ description: "A comprehensive reference of all available Task Master commands"
     task-master codex run --tag master --exec-hard-timeout-ms 7200000
     task-master codex run --tag master --exec-hard-timeout-ms 0   # disable hard timeout
     task-master codex run --tag master --no-terminate-on-result
+    task-master codex run --tag master --no-show-executor-output  # disable default real-time flow
 
     # Explicit mode selection
     task-master codex run --mode full --tag master

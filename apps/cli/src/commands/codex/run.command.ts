@@ -20,6 +20,7 @@ interface RunOptions {
 	executor?: string;
 	model?: string;
 	reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+	showExecutorOutput?: boolean;
 	execIdleTimeoutMs?: string;
 	execHardTimeoutMs?: string;
 	execTimeoutMs?: string;
@@ -51,6 +52,10 @@ export class RunCommand extends Command {
 			.option('-e, --executor <cmd>', 'Executor command', 'codex')
 			.option('-m, --model <model>', 'Model for codex exec')
 			.option('--reasoning-effort <level>', 'low|medium|high|xhigh')
+			.option(
+				'--no-show-executor-output',
+				'Disable real-time stdout/stderr output from codex exec'
+			)
 			.option(
 				'--exec-idle-timeout-ms <ms>',
 				'Per-task idle timeout in milliseconds (0 to disable)'
@@ -94,6 +99,7 @@ export class RunCommand extends Command {
 				executor: options.executor,
 				model: options.model,
 				reasoningEffort: options.reasoningEffort,
+				showExecutorOutput: options.showExecutorOutput,
 				execIdleTimeoutMs: this.parseOptionalInteger(options.execIdleTimeoutMs),
 				execHardTimeoutMs: this.parseOptionalInteger(options.execHardTimeoutMs),
 				execTimeoutMs: this.parseOptionalInteger(options.execTimeoutMs),
@@ -116,6 +122,12 @@ export class RunCommand extends Command {
 								`[${summary.status}] ${summary.taskId} exit=${summary.exitCode} duration=${summary.durationMs}ms log=${summary.logFile}`
 							)
 						);
+					},
+					onInfo: (message) => {
+						console.log(chalk.gray(`[info] ${message}`));
+					},
+					onWarning: (message) => {
+						console.log(chalk.yellow(`[warn] ${message}`));
 					}
 				}
 			});

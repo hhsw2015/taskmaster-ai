@@ -46,6 +46,7 @@ describe('Codex RunCommand', () => {
 			executor: 'codex',
 			model: 'gpt-5.2-codex',
 			reasoningEffort: 'xhigh',
+			showExecutorOutput: false,
 			execIdleTimeoutMs: '600000',
 			execHardTimeoutMs: '90000',
 			execTimeoutMs: '120000',
@@ -66,6 +67,7 @@ describe('Codex RunCommand', () => {
 				executor: 'codex',
 				model: 'gpt-5.2-codex',
 				reasoningEffort: 'xhigh',
+				showExecutorOutput: false,
 				execIdleTimeoutMs: 600000,
 				execHardTimeoutMs: 90000,
 				execTimeoutMs: 120000,
@@ -74,6 +76,21 @@ describe('Codex RunCommand', () => {
 				mode: 'lite',
 				maxTasks: 10,
 				continueOnFailure: undefined
+			})
+		);
+	});
+
+	it('defaults to showing executor output when flag is not provided', async () => {
+		const command = new RunCommand();
+		const executeSpy = vi
+			.spyOn(command as any, 'execute')
+			.mockResolvedValue(undefined);
+
+		await command.parseAsync([], { from: 'user' });
+
+		expect(executeSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				showExecutorOutput: true
 			})
 		);
 	});

@@ -86,6 +86,9 @@ describe('SkillRunService', () => {
 		const spec = await readFile(specPath, 'utf-8');
 		const progress = await readFile(progressPath, 'utf-8');
 		expect(agents.match(/TM-LONGRUN-START/g)?.length).toBe(1);
+		expect(agents).toContain('Taskmaster Quick Triggers');
+		expect(agents).toContain('当用户说“拆分任务”时');
+		expect(agents).toContain('当用户说“开始实现”时');
 		expect(skill).toContain('Taskmaster Longrun Skill');
 		expect(skill.startsWith('---')).toBe(true);
 		expect(skill.match(/TM-INTEGRATION-START/g)?.length).toBe(1);
@@ -99,7 +102,7 @@ describe('SkillRunService', () => {
 		expect(progress).toContain('# PROGRESS');
 	});
 
-	it('prefers existing lowercase agent.md as default target', async () => {
+	it('uses AGENTS.md as default target even when lowercase agent.md exists', async () => {
 		const mockTasksDomain = {
 			list: vi.fn().mockResolvedValue({ tasks: [] })
 		} as unknown as TasksDomain;
@@ -108,11 +111,14 @@ describe('SkillRunService', () => {
 		await writeFile(lowerAgentsPath, '# Existing agent instructions\n', 'utf-8');
 
 		const result = await service.initAssets();
+		const upperAgentsPath = path.join(tmpDir, 'AGENTS.md');
 
-		expect(result.paths.agentsPath).toBe(lowerAgentsPath);
+		expect(result.paths.agentsPath).toBe(upperAgentsPath);
 		const agents = await readFile(lowerAgentsPath, 'utf-8');
 		expect(agents).toContain('Existing agent instructions');
-		expect(agents).toContain('TM-LONGRUN-START');
+		expect(agents).not.toContain('TM-LONGRUN-START');
+		const upperAgents = await readFile(upperAgentsPath, 'utf-8');
+		expect(upperAgents).toContain('TM-LONGRUN-START');
 	});
 
 	it('fails in fail mode when file exists but hook is missing', async () => {
@@ -132,6 +138,32 @@ describe('SkillRunService', () => {
 
 		const after = await readFile(agentsPath, 'utf-8');
 		expect(after).toBe('# Existing instructions\n');
+	});
+
+	it('upgrades existing legacy TM-LONGRUN hook to include skill AGENTS path', async () => {
+		const mockTasksDomain = {
+			list: vi.fn().mockResolvedValue({ tasks: [] })
+		} as unknown as TasksDomain;
+		const service = new SkillRunService(tmpDir, mockTasksDomain);
+		const agentsPath = path.join(tmpDir, 'AGENTS.md');
+		const legacyHook = [
+			'# Existing instructions',
+			'',
+			'<!-- TM-LONGRUN-START -->',
+			'## Taskmaster Longrun Hook',
+			'When implementation starts, load AGENTS first, then load @.codex/skills/taskmaster-longrun/SKILL.md, then execute one Taskmaster task per Codex run.',
+			'<!-- TM-LONGRUN-END -->',
+			''
+		].join('\n');
+		await writeFile(agentsPath, legacyHook, 'utf-8');
+
+		const result = await service.initAssets();
+		expect(result.updated).toContain('AGENTS.md');
+
+		const content = await readFile(agentsPath, 'utf-8');
+		expect(content).toContain('@.codex/skills/taskmaster-longrun/AGENTS.md');
+		expect(content).toContain('Taskmaster Quick Triggers');
+		expect(content.match(/TM-LONGRUN-START/g)?.length).toBe(1);
 	});
 
 	it('upgrades skill file when frontmatter is missing', async () => {
@@ -370,6 +402,69 @@ describe('SkillRunService', () => {
 		expect(result.finalStatus).toBe('error');
 		expect(result.errorMessage).toContain('failed');
 		expect(updateStatus).toHaveBeenCalledWith('1', 'blocked', undefined);
+	});
+
+	it('continues by default when continueOnFailure is not provided', async () => {
+		const task1: Task = {
+			id: '1',
+			title: 'first task',
+			description: 'd1',
+			status: 'pending',
+			priority: 'medium',
+			dependencies: [],
+			details: 'details-1',
+			testStrategy: 'test-1',
+			subtasks: []
+		};
+		const task2: Task = {
+			id: '2',
+			title: 'second task',
+			description: 'd2',
+			status: 'pending',
+			priority: 'medium',
+			dependencies: [],
+			details: 'details-2',
+			testStrategy: 'test-2',
+			subtasks: []
+		};
+		const getNext = vi
+			.fn()
+			.mockResolvedValueOnce(task1)
+			.mockResolvedValueOnce(task2)
+			.mockResolvedValueOnce(null);
+		const updateStatus = vi.fn().mockResolvedValue(undefined);
+		const list = vi.fn().mockResolvedValue({ tasks: [task1, task2] });
+		const mockTasksDomain = {
+			getNext,
+			updateStatus,
+			list
+		} as unknown as TasksDomain;
+		const service = new SkillRunService(tmpDir, mockTasksDomain);
+		vi.spyOn(service as any, 'executeCodex')
+			.mockResolvedValueOnce({
+				exitCode: 1,
+				signal: null,
+				durationMs: 10,
+				logFile: path.join(tmpDir, 'task1.log'),
+				timedOut: false,
+				parsedResult: null
+			})
+			.mockResolvedValueOnce({
+				exitCode: 0,
+				signal: null,
+				durationMs: 12,
+				logFile: path.join(tmpDir, 'task2.log'),
+				timedOut: false,
+				parsedResult: null
+			});
+
+		const result = await service.run({
+			maxRetries: 1
+		});
+
+		expect(result.finalStatus).toBe('all_complete');
+		expect(updateStatus).toHaveBeenCalledWith('1', 'pending', undefined);
+		expect(updateStatus).toHaveBeenCalledWith('2', 'done', undefined);
 	});
 
 	it('injects machine-readable result instructions into prompt', () => {
