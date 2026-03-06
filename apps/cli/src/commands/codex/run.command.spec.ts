@@ -94,4 +94,31 @@ describe('Codex RunCommand', () => {
 			})
 		);
 	});
+
+	it('prints longrun mode summary before execution starts', async () => {
+		const command = new RunCommand();
+		await (command as any).execute({
+			tag: 'feature-x',
+			executor: 'codex',
+			model: 'gpt-5.3-codex',
+			reasoningEffort: 'xhigh',
+			showExecutorOutput: true
+		});
+
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining('Starting Codex longrun execution...')
+		);
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining('Mode: runner-controlled auto-continue')
+		);
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining('Tag: feature-x')
+		);
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining('Model: gpt-5.3-codex')
+		);
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining('Continue: until all_complete/blocked/error')
+		);
+	});
 });

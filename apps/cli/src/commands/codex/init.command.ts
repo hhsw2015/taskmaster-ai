@@ -52,9 +52,10 @@ export class InitCommand extends Command {
 			});
 			await tmCore.close();
 			const loadHints = this.buildLoadHints(projectPath, result.paths);
+			const startCommand = this.buildLauncherCommand(projectPath, result.paths.launcherPath);
 			const immediateAction =
 				loadHints.length === 2
-					? `Load ${loadHints[0]} -> load ${loadHints[1]} -> continue`
+					? `Load ${loadHints[0]} -> load ${loadHints[1]} -> run ${startCommand}`
 					: undefined;
 
 			if (options.json) {
@@ -63,6 +64,7 @@ export class InitCommand extends Command {
 						{
 							...result,
 							loadHints,
+							start_command: startCommand,
 							immediate_action: immediateAction
 						},
 						null,
@@ -75,6 +77,7 @@ export class InitCommand extends Command {
 			console.log(chalk.green('Codex longrun assets initialized.'));
 			console.log(chalk.gray(`  AGENTS: ${result.paths.agentsPath}`));
 			console.log(chalk.gray(`  SKILL : ${result.paths.skillPath}`));
+			console.log(chalk.gray(`  Start : ${startCommand}`));
 			console.log(chalk.gray(`  Session: ${result.paths.sessionDir}`));
 			if (loadHints.length === 2) {
 				console.log(
@@ -82,6 +85,7 @@ export class InitCommand extends Command {
 				);
 				console.log(`TM_IMMEDIATE_ACTION: LOAD ${loadHints[0]}`);
 				console.log(`TM_IMMEDIATE_ACTION: LOAD ${loadHints[1]}`);
+				console.log(`TM_IMMEDIATE_ACTION: RUN ${startCommand}`);
 			}
 			if (result.created.length > 0) {
 				console.log(chalk.green(`  Created: ${result.created.join(', ')}`));
@@ -109,5 +113,9 @@ export class InitCommand extends Command {
 			const rel = path.relative(projectPath, absolutePath).split(path.sep).join('/');
 			return `@${rel}`;
 		});
+	}
+
+	private buildLauncherCommand(projectPath: string, launcherPath: string): string {
+		return `./${path.relative(projectPath, launcherPath).split(path.sep).join('/')}`;
 	}
 }

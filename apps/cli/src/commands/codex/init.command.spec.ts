@@ -31,6 +31,7 @@ describe('Codex InitCommand', () => {
 						skillAgentsPath:
 							'/tmp/project/.codex/skills/taskmaster-longrun/AGENTS.md',
 						skillPath: '/tmp/project/.codex/skills/taskmaster-longrun/SKILL.md',
+						launcherPath: '/tmp/project/.taskmaster/bin/codex-longrun',
 						sessionDir: '/tmp/project/.codex-tasks/taskmaster-longrun'
 					},
 					created: [],
@@ -80,6 +81,11 @@ describe('Codex InitCommand', () => {
 				'TM_IMMEDIATE_ACTION: LOAD @.codex/skills/taskmaster-longrun/SKILL.md'
 			)
 		);
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining(
+				'TM_IMMEDIATE_ACTION: RUN ./.taskmaster/bin/codex-longrun'
+			)
+		);
 	});
 
 	it('returns load hints and immediate action in json mode', async () => {
@@ -92,8 +98,10 @@ describe('Codex InitCommand', () => {
 			'@.codex/skills/taskmaster-longrun/AGENTS.md',
 			'@.codex/skills/taskmaster-longrun/SKILL.md'
 		]);
+		expect(parsed.start_command).toBe('./.taskmaster/bin/codex-longrun');
 		expect(parsed.immediate_action).toContain(
 			'@.codex/skills/taskmaster-longrun/AGENTS.md'
 		);
+		expect(parsed.immediate_action).toContain('./.taskmaster/bin/codex-longrun');
 	});
 });

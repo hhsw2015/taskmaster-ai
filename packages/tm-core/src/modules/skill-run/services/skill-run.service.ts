@@ -5,6 +5,7 @@
 import { createWriteStream, existsSync } from 'node:fs';
 import {
 	appendFile,
+	chmod,
 	mkdir,
 	readFile,
 	stat,
@@ -36,6 +37,7 @@ const FORCE_KILL_GRACE_MS = 5000;
 const RESULT_TERMINATE_GRACE_MS = 1500;
 const RESULT_PREFIX = 'TM_RESULT:';
 const OUTPUT_BUFFER_MAX_CHARS = 200_000;
+const REMOTE_TEMPLATE_FETCH_TIMEOUT_MS_DEFAULT = 3000;
 
 const SKILL_FRONTMATTER = `---
 name: taskmaster-longrun
@@ -110,6 +112,16 @@ This addendum defines how this upstream skill is integrated with Task Master CLI
    - success => done
    - retry exhausted => blocked
 ${SKILL_INTEGRATION_MARK_END}`;
+
+const DEFAULT_LAUNCHER_TEMPLATE = `#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v task-master >/dev/null 2>&1; then
+	exec task-master codex run "$@"
+fi
+
+exec npx -y --package @hhsw2015/task-master-ai task-master codex run "$@"
+`;
 
 function nowIso(): string {
 	return new Date().toISOString();
@@ -191,11 +203,18 @@ export class SkillRunService {
 			);
 		const skillAgentsPath = path.join(path.dirname(skillPath), 'AGENTS.md');
 		const skillAssetsDir = path.join(path.dirname(skillPath), 'assets');
+		const launcherPath = path.join(
+			this.projectRoot,
+			'.taskmaster',
+			'bin',
+			'codex-longrun'
+		);
 		return {
 			agentsPath,
 			skillAgentsPath,
 			skillPath,
 			skillAssetsDir,
+			launcherPath,
 			sessionDir,
 			specPath: path.join(sessionDir, 'SPEC.md'),
 			progressPath: path.join(sessionDir, 'PROGRESS.md'),
@@ -214,6 +233,7 @@ export class SkillRunService {
 		const paths = this.resolvePaths(options);
 		const mode = this.resolveMode(options.mode);
 		await mkdir(path.dirname(paths.skillPath), { recursive: true });
+		await mkdir(path.dirname(paths.launcherPath), { recursive: true });
 		await mkdir(paths.sessionDir, { recursive: true });
 		await mkdir(paths.logsDir, { recursive: true });
 		await this.ensureCodexTasksGitignore();
@@ -225,11 +245,8 @@ export class SkillRunService {
 			skipped: []
 		};
 
-		await this.ensureAgentsHook(
-			paths.agentsPath,
-			result,
-			options.agentsMode ?? 'append'
-		);
+		await this.ensureLauncherScript(paths.launcherPath, result);
+		await this.ensureAgentsHook(paths, result, options.agentsMode ?? 'append');
 		await this.ensureUpstreamAgentsTemplate(paths.skillAgentsPath, result);
 		await this.ensureSkillTemplate(paths.skillPath, result);
 		await this.ensureSkillAssetTemplates(paths.skillAssetsDir, result);
@@ -675,15 +692,12 @@ ${RESULT_PREFIX} {"status":"done|failed","validation":"pass|fail|unknown","summa
 依赖: ${deps}`;
 	}
 
-	private async ensureAgentsHook(
-		filePath: string,
-		result: SkillRunInitResult,
-		mode: AgentsHookMode
-	): Promise<void> {
-		const block = `${AGENTS_MARK_START}
+	private buildAgentsHookBlock(paths: SkillRunPaths): string {
+		const launcher = `./${ensurePosix(path.relative(this.projectRoot, paths.launcherPath))}`;
+		return `${AGENTS_MARK_START}
 ## Taskmaster Longrun Hook
 When implementation starts, load AGENTS first, then load @.codex/skills/taskmaster-longrun/AGENTS.md, then load @.codex/skills/taskmaster-longrun/SKILL.md.
-For end-to-end execution, invoke task-master codex run once and let the runner auto-advance tasks after status writeback; do not ask for per-task confirmation.
+For end-to-end execution, invoke ${launcher} once and let the runner auto-advance tasks after status writeback; do not ask for per-task confirmation.
 
 ## Taskmaster Quick Triggers
 - 当用户说“拆分任务”时：
@@ -691,10 +705,34 @@ For end-to-end execution, invoke task-master codex run once and let the runner a
   2) 运行 task-master parse-prd --input .taskmaster/docs/prd.txt --force
   3) 输出任务列表摘要并等待“开始实现”
 - 当用户说“开始实现”时：
-  1) 在当前终端前台运行 task-master codex run（使用当前激活 tag）
-  2) 不逐任务询问确认，连续执行到 all_complete / blocked / error
-  3) 每个任务完成后回写 Taskmaster 状态，并持续输出执行日志
+  1) 不要在普通聊天模式下直接实现任务
+  2) 必须在当前终端前台运行 ${launcher}（使用当前激活 tag）
+  3) 不逐任务询问确认，连续执行到 all_complete / blocked / error
+  4) 每个任务完成后回写 Taskmaster 状态，并持续输出执行日志
 ${AGENTS_MARK_END}`;
+	}
+
+	private async ensureLauncherScript(
+		filePath: string,
+		result: SkillRunInitResult
+	): Promise<void> {
+		if (await this.fileExists(filePath)) {
+			result.skipped.push(path.relative(this.projectRoot, filePath));
+			await chmod(filePath, 0o755);
+			return;
+		}
+		await writeFile(filePath, DEFAULT_LAUNCHER_TEMPLATE, 'utf-8');
+		await chmod(filePath, 0o755);
+		result.created.push(path.relative(this.projectRoot, filePath));
+	}
+
+	private async ensureAgentsHook(
+		paths: SkillRunPaths,
+		result: SkillRunInitResult,
+		mode: AgentsHookMode
+	): Promise<void> {
+		const filePath = paths.agentsPath;
+		const block = this.buildAgentsHookBlock(paths);
 		if (!(await this.fileExists(filePath))) {
 			await writeFile(filePath, `${block}\n`, 'utf-8');
 			result.created.push(path.relative(this.projectRoot, filePath));
@@ -931,9 +969,15 @@ ${AGENTS_MARK_END}`;
 		if (disableRemote) {
 			return fallback;
 		}
+		const timeoutMs = this.resolveRemoteTemplateFetchTimeoutMs();
+		const controller = new AbortController();
+		const timeout = setTimeout(() => {
+			controller.abort();
+		}, timeoutMs);
 		try {
 			const response = await fetch(url, {
-				headers: { 'User-Agent': 'task-master-ai/skill-run' }
+				headers: { 'User-Agent': 'task-master-ai/skill-run' },
+				signal: controller.signal
 			});
 			if (!response.ok) {
 				return fallback;
@@ -942,7 +986,21 @@ ${AGENTS_MARK_END}`;
 			return text.trim().length > 0 ? text : fallback;
 		} catch {
 			return fallback;
+		} finally {
+			clearTimeout(timeout);
 		}
+	}
+
+	private resolveRemoteTemplateFetchTimeoutMs(): number {
+		const raw = process.env.TM_REMOTE_SKILL_FETCH_TIMEOUT_MS;
+		if (!raw) {
+			return REMOTE_TEMPLATE_FETCH_TIMEOUT_MS_DEFAULT;
+		}
+		const parsed = Number(raw);
+		if (!Number.isFinite(parsed) || parsed <= 0) {
+			return REMOTE_TEMPLATE_FETCH_TIMEOUT_MS_DEFAULT;
+		}
+		return Math.max(1, Math.trunc(parsed));
 	}
 
 	private async ensureCodexTasksGitignore(): Promise<void> {

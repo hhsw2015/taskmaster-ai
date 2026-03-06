@@ -87,6 +87,7 @@ export class RunCommand extends Command {
 			const projectPath = getProjectRoot(options.project);
 			const tmCore = await createTmCore({ projectPath });
 			console.log(chalk.cyan('Starting Codex longrun execution...'));
+			this.printStartSummary(options);
 
 			const result = await tmCore.skillRun.run({
 				tag: options.tag,
@@ -155,5 +156,33 @@ export class RunCommand extends Command {
 		}
 		const parsed = Number.parseInt(value, 10);
 		return Number.isNaN(parsed) ? undefined : parsed;
+	}
+
+	private printStartSummary(options: RunOptions): void {
+		console.log(chalk.gray('  Mode: runner-controlled auto-continue'));
+		console.log(chalk.gray(`  Tag: ${options.tag || '(active tag)'}`));
+		console.log(chalk.gray(`  Executor: ${options.executor || 'codex'}`));
+		console.log(chalk.gray(`  Model: ${options.model || '(executor default)'}`));
+		console.log(
+			chalk.gray(
+				`  Reasoning: ${options.reasoningEffort || '(executor default)'}`
+			)
+		);
+		console.log(
+			chalk.gray(
+				`  Continue: ${
+					options.continueOnFailure === false
+						? 'stop-on-failure'
+						: 'until all_complete/blocked/error'
+				}`
+			)
+		);
+		console.log(
+			chalk.gray(
+				`  Executor output: ${
+					options.showExecutorOutput === false ? 'hidden' : 'streaming'
+				}`
+			)
+		);
 	}
 }

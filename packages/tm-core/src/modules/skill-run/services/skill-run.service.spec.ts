@@ -15,6 +15,8 @@ describe('SkillRunService', () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+		vi.useRealTimers();
+		delete process.env.TM_REMOTE_SKILL_FETCH_TIMEOUT_MS;
 	});
 
 	it('initializes assets idempotently', async () => {
@@ -40,6 +42,12 @@ describe('SkillRunService', () => {
 			'skills',
 			'taskmaster-longrun',
 			'AGENTS.md'
+		);
+		const launcherPath = path.join(
+			tmpDir,
+			'.taskmaster',
+			'bin',
+			'codex-longrun'
 		);
 		const specAssetPath = path.join(
 			tmpDir,
@@ -85,10 +93,13 @@ describe('SkillRunService', () => {
 		const todoAsset = await readFile(todoAssetPath, 'utf-8');
 		const spec = await readFile(specPath, 'utf-8');
 		const progress = await readFile(progressPath, 'utf-8');
+		const launcher = await readFile(launcherPath, 'utf-8');
 		expect(agents.match(/TM-LONGRUN-START/g)?.length).toBe(1);
 		expect(agents).toContain('Taskmaster Quick Triggers');
 		expect(agents).toContain('当用户说“拆分任务”时');
 		expect(agents).toContain('当用户说“开始实现”时');
+		expect(agents).toContain('./.taskmaster/bin/codex-longrun');
+		expect(agents).toContain('不要在普通聊天模式下直接实现任务');
 		expect(skill).toContain('Taskmaster Longrun Skill');
 		expect(skill.startsWith('---')).toBe(true);
 		expect(skill.match(/TM-INTEGRATION-START/g)?.length).toBe(1);
@@ -100,6 +111,7 @@ describe('SkillRunService', () => {
 		expect(todoAsset).toContain('id,task,status');
 		expect(spec).toContain('# SPEC');
 		expect(progress).toContain('# PROGRESS');
+		expect(launcher).toContain('exec task-master codex run "$@"');
 	});
 
 	it('uses AGENTS.md as default target even when lowercase agent.md exists', async () => {
@@ -187,6 +199,48 @@ describe('SkillRunService', () => {
 		expect(upgraded.startsWith('---')).toBe(true);
 		expect(upgraded).toContain('Taskmaster Longrun Skill');
 		expect(upgraded).toContain('Taskmaster Integration Addendum');
+	});
+
+	it('falls back when remote template fetch times out', async () => {
+		vi.useFakeTimers();
+		process.env.TM_REMOTE_SKILL_FETCH_TIMEOUT_MS = '5';
+		const originalNodeEnv = process.env.NODE_ENV;
+		process.env.NODE_ENV = 'development';
+		try {
+			const mockTasksDomain = {
+				list: vi.fn().mockResolvedValue({ tasks: [] })
+			} as unknown as TasksDomain;
+			const service = new SkillRunService(tmpDir, mockTasksDomain);
+			const fetchMock = vi.fn().mockImplementation(
+				async (_url: string, init?: { signal?: AbortSignal }) =>
+					new Promise((resolve, reject) => {
+						if (!init?.signal) {
+							resolve(new Response('remote-content', { status: 200 }));
+							return;
+						}
+						init.signal.addEventListener('abort', () => {
+							reject(new Error('aborted'));
+						});
+					})
+			);
+			vi.stubGlobal('fetch', fetchMock);
+
+			const promise = (service as any).loadRemoteTemplate(
+				'https://example.com/skill.md',
+				'fallback-template'
+			);
+			await vi.advanceTimersByTimeAsync(10);
+
+			await expect(promise).resolves.toBe('fallback-template');
+			expect(fetchMock).toHaveBeenCalledWith(
+				'https://example.com/skill.md',
+				expect.objectContaining({
+					signal: expect.any(AbortSignal)
+				})
+			);
+		} finally {
+			process.env.NODE_ENV = originalNodeEnv;
+		}
 	});
 
 	it('runs one task and marks done when executor succeeds', async () => {
