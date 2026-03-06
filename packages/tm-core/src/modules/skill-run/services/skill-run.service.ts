@@ -13,6 +13,10 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import {
+	PACKAGE_NAME,
+	TASKMASTER_VERSION
+} from '../../../common/constants/index.js';
 import type { Task, TaskStatus } from '../../../common/types/index.js';
 import type { TasksDomain } from '../../tasks/tasks-domain.js';
 import type {
@@ -113,16 +117,6 @@ This addendum defines how this upstream skill is integrated with Task Master CLI
    - retry exhausted => blocked
 ${SKILL_INTEGRATION_MARK_END}`;
 
-const DEFAULT_LAUNCHER_TEMPLATE = `#!/usr/bin/env bash
-set -euo pipefail
-
-if command -v task-master >/dev/null 2>&1; then
-	exec task-master codex run "$@"
-fi
-
-exec npx -y --package @hhsw2015/task-master-ai task-master codex run "$@"
-`;
-
 function nowIso(): string {
 	return new Date().toISOString();
 }
@@ -141,6 +135,32 @@ function toCsvCell(value: string): string {
 		return `"${normalized.replace(/"/g, '""')}"`;
 	}
 	return normalized;
+}
+
+function resolvePackageSpecifier(): string {
+	if (
+		typeof TASKMASTER_VERSION === 'string' &&
+		TASKMASTER_VERSION.trim().length > 0 &&
+		TASKMASTER_VERSION !== 'unknown'
+	) {
+		return `${PACKAGE_NAME}@${TASKMASTER_VERSION}`;
+	}
+	return PACKAGE_NAME;
+}
+
+function buildPosixLauncherTemplate(packageSpecifier: string): string {
+	return `#!/usr/bin/env bash
+set -euo pipefail
+
+exec npx -y --package ${packageSpecifier} task-master codex run "$@"
+`;
+}
+
+function buildWindowsLauncherTemplate(packageSpecifier: string): string {
+	return `@echo off
+setlocal
+npx -y --package ${packageSpecifier} task-master codex run %*
+`;
 }
 
 interface CsvRow {
@@ -203,18 +223,14 @@ export class SkillRunService {
 			);
 		const skillAgentsPath = path.join(path.dirname(skillPath), 'AGENTS.md');
 		const skillAssetsDir = path.join(path.dirname(skillPath), 'assets');
-		const launcherPath = path.join(
-			this.projectRoot,
-			'.taskmaster',
-			'bin',
-			'codex-longrun'
-		);
+		const launcherPath = this.resolveLauncherPath();
 		return {
 			agentsPath,
 			skillAgentsPath,
 			skillPath,
 			skillAssetsDir,
 			launcherPath,
+			launcherCommand: this.buildLauncherCommand(launcherPath),
 			sessionDir,
 			specPath: path.join(sessionDir, 'SPEC.md'),
 			progressPath: path.join(sessionDir, 'PROGRESS.md'),
@@ -693,7 +709,7 @@ ${RESULT_PREFIX} {"status":"done|failed","validation":"pass|fail|unknown","summa
 	}
 
 	private buildAgentsHookBlock(paths: SkillRunPaths): string {
-		const launcher = `./${ensurePosix(path.relative(this.projectRoot, paths.launcherPath))}`;
+		const launcher = paths.launcherCommand;
 		return `${AGENTS_MARK_START}
 ## Taskmaster Longrun Hook
 When implementation starts, load AGENTS first, then load @.codex/skills/taskmaster-longrun/AGENTS.md, then load @.codex/skills/taskmaster-longrun/SKILL.md.
@@ -716,14 +732,22 @@ ${AGENTS_MARK_END}`;
 		filePath: string,
 		result: SkillRunInitResult
 	): Promise<void> {
+		const content = this.buildLauncherScript();
 		if (await this.fileExists(filePath)) {
-			result.skipped.push(path.relative(this.projectRoot, filePath));
-			await chmod(filePath, 0o755);
-			return;
+			const existing = await readFile(filePath, 'utf-8');
+			if (existing === content) {
+				result.skipped.push(path.relative(this.projectRoot, filePath));
+			} else {
+				await writeFile(filePath, content, 'utf-8');
+				result.updated.push(path.relative(this.projectRoot, filePath));
+			}
+		} else {
+			await writeFile(filePath, content, 'utf-8');
+			result.created.push(path.relative(this.projectRoot, filePath));
 		}
-		await writeFile(filePath, DEFAULT_LAUNCHER_TEMPLATE, 'utf-8');
-		await chmod(filePath, 0o755);
-		result.created.push(path.relative(this.projectRoot, filePath));
+		if (this.currentPlatform() !== 'win32') {
+			await chmod(filePath, 0o755);
+		}
 	}
 
 	private async ensureAgentsHook(
@@ -953,6 +977,35 @@ ${AGENTS_MARK_END}`;
 			return mode;
 		}
 		return 'full';
+	}
+
+	private currentPlatform(): NodeJS.Platform {
+		return process.platform;
+	}
+
+	private resolveLauncherPath(): string {
+		return path.join(
+			this.projectRoot,
+			'.taskmaster',
+			'bin',
+			this.currentPlatform() === 'win32' ? 'codex-longrun.cmd' : 'codex-longrun'
+		);
+	}
+
+	private buildLauncherCommand(launcherPath: string): string {
+		const relativePath = path.relative(this.projectRoot, launcherPath);
+		if (this.currentPlatform() === 'win32') {
+			return `.\\${relativePath.replace(/[\\/]/g, '\\')}`;
+		}
+		return `./${ensurePosix(relativePath)}`;
+	}
+
+	private buildLauncherScript(): string {
+		const packageSpecifier = resolvePackageSpecifier();
+		if (this.currentPlatform() === 'win32') {
+			return buildWindowsLauncherTemplate(packageSpecifier);
+		}
+		return buildPosixLauncherTemplate(packageSpecifier);
 	}
 
 	private async safeRead(filePath: string): Promise<string | null> {

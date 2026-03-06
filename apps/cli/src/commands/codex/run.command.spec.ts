@@ -121,4 +121,22 @@ describe('Codex RunCommand', () => {
 			expect.stringContaining('Continue: until all_complete/blocked/error')
 		);
 	});
+
+	it('keeps stdout pure json when --json is enabled', async () => {
+		const command = new RunCommand();
+		await (command as any).execute({
+			tag: 'feature-x',
+			executor: 'codex',
+			model: 'gpt-5.3-codex',
+			reasoningEffort: 'xhigh',
+			showExecutorOutput: true,
+			json: true
+		});
+
+		expect(console.log).toHaveBeenCalledTimes(1);
+		const payload = (console.log as any).mock.calls[0][0];
+		expect(() => JSON.parse(payload)).not.toThrow();
+		expect(payload).not.toContain('Starting Codex longrun execution...');
+		expect(payload).not.toContain('runner-controlled auto-continue');
+	});
 });

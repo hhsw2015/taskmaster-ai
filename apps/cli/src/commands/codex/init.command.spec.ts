@@ -32,6 +32,7 @@ describe('Codex InitCommand', () => {
 							'/tmp/project/.codex/skills/taskmaster-longrun/AGENTS.md',
 						skillPath: '/tmp/project/.codex/skills/taskmaster-longrun/SKILL.md',
 						launcherPath: '/tmp/project/.taskmaster/bin/codex-longrun',
+						launcherCommand: './.taskmaster/bin/codex-longrun',
 						sessionDir: '/tmp/project/.codex-tasks/taskmaster-longrun'
 					},
 					created: [],

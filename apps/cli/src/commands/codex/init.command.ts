@@ -52,7 +52,7 @@ export class InitCommand extends Command {
 			});
 			await tmCore.close();
 			const loadHints = this.buildLoadHints(projectPath, result.paths);
-			const startCommand = this.buildLauncherCommand(projectPath, result.paths.launcherPath);
+			const startCommand = result.paths.launcherCommand;
 			const immediateAction =
 				loadHints.length === 2
 					? `Load ${loadHints[0]} -> load ${loadHints[1]} -> run ${startCommand}`
@@ -113,9 +113,5 @@ export class InitCommand extends Command {
 			const rel = path.relative(projectPath, absolutePath).split(path.sep).join('/');
 			return `@${rel}`;
 		});
-	}
-
-	private buildLauncherCommand(projectPath: string, launcherPath: string): string {
-		return `./${path.relative(projectPath, launcherPath).split(path.sep).join('/')}`;
 	}
 }

@@ -2,6 +2,10 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+	PACKAGE_NAME,
+	TASKMASTER_VERSION
+} from '../../../common/constants/index.js';
 import type { Task } from '../../../common/types/index.js';
 import type { TasksDomain } from '../../tasks/tasks-domain.js';
 import { SkillRunService } from './skill-run.service.js';
@@ -111,7 +115,9 @@ describe('SkillRunService', () => {
 		expect(todoAsset).toContain('id,task,status');
 		expect(spec).toContain('# SPEC');
 		expect(progress).toContain('# PROGRESS');
-		expect(launcher).toContain('exec task-master codex run "$@"');
+		expect(launcher).toContain(
+			`exec npx -y --package ${PACKAGE_NAME}@${TASKMASTER_VERSION} task-master codex run "$@"`
+		);
 	});
 
 	it('uses AGENTS.md as default target even when lowercase agent.md exists', async () => {
@@ -240,6 +246,38 @@ describe('SkillRunService', () => {
 			);
 		} finally {
 			process.env.NODE_ENV = originalNodeEnv;
+		}
+	});
+
+	it('creates a windows launcher and command when platform is win32', async () => {
+		const originalPlatform = process.platform;
+		Object.defineProperty(process, 'platform', {
+			value: 'win32'
+		});
+		try {
+			const mockTasksDomain = {
+				list: vi.fn().mockResolvedValue({ tasks: [] })
+			} as unknown as TasksDomain;
+			const service = new SkillRunService(tmpDir, mockTasksDomain);
+
+			const result = await service.initAssets();
+			const launcher = await readFile(result.paths.launcherPath, 'utf-8');
+			const agents = await readFile(result.paths.agentsPath, 'utf-8');
+
+			expect(result.paths.launcherPath).toBe(
+				path.join(tmpDir, '.taskmaster', 'bin', 'codex-longrun.cmd')
+			);
+			expect(result.paths.launcherCommand).toBe(
+				'.\\.taskmaster\\bin\\codex-longrun.cmd'
+			);
+			expect(launcher).toContain(
+				`npx -y --package ${PACKAGE_NAME}@${TASKMASTER_VERSION} task-master codex run %*`
+			);
+			expect(agents).toContain('.\\.taskmaster\\bin\\codex-longrun.cmd');
+		} finally {
+			Object.defineProperty(process, 'platform', {
+				value: originalPlatform
+			});
 		}
 	});
 

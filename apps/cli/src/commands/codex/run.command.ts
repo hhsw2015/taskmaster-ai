@@ -86,8 +86,11 @@ export class RunCommand extends Command {
 		try {
 			const projectPath = getProjectRoot(options.project);
 			const tmCore = await createTmCore({ projectPath });
-			console.log(chalk.cyan('Starting Codex longrun execution...'));
-			this.printStartSummary(options);
+			const jsonMode = options.json === true;
+			if (!jsonMode) {
+				console.log(chalk.cyan('Starting Codex longrun execution...'));
+				this.printStartSummary(options);
+			}
 
 			const result = await tmCore.skillRun.run({
 				tag: options.tag,
@@ -111,30 +114,32 @@ export class RunCommand extends Command {
 					? Number.parseInt(options.maxTasks, 10)
 					: undefined,
 				continueOnFailure: options.continueOnFailure,
-				callbacks: {
-					onTaskStart: (task, attempt) => {
-						console.log(
-							chalk.white(`\n[Task ${task.id}] ${task.title} (attempt ${attempt})`)
-						);
-					},
-					onTaskEnd: (summary) => {
-						console.log(
-							chalk.gray(
-								`[${summary.status}] ${summary.taskId} exit=${summary.exitCode} duration=${summary.durationMs}ms log=${summary.logFile}`
-							)
-						);
-					},
-					onInfo: (message) => {
-						console.log(chalk.gray(`[info] ${message}`));
-					},
-					onWarning: (message) => {
-						console.log(chalk.yellow(`[warn] ${message}`));
-					}
-				}
+				callbacks: jsonMode
+					? undefined
+					: {
+							onTaskStart: (task, attempt) => {
+								console.log(
+									chalk.white(`\n[Task ${task.id}] ${task.title} (attempt ${attempt})`)
+								);
+							},
+							onTaskEnd: (summary) => {
+								console.log(
+									chalk.gray(
+										`[${summary.status}] ${summary.taskId} exit=${summary.exitCode} duration=${summary.durationMs}ms log=${summary.logFile}`
+									)
+								);
+							},
+							onInfo: (message) => {
+								console.log(chalk.gray(`[info] ${message}`));
+							},
+							onWarning: (message) => {
+								console.log(chalk.yellow(`[warn] ${message}`));
+							}
+						}
 			});
 			await tmCore.close();
 
-			if (options.json) {
+			if (jsonMode) {
 				console.log(JSON.stringify(result, null, 2));
 				return;
 			}

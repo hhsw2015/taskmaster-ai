@@ -10,6 +10,7 @@ export interface SkillRunPaths {
 	skillPath: string;
 	skillAssetsDir: string;
 	launcherPath: string;
+	launcherCommand: string;
 	sessionDir: string;
 	specPath: string;
 	progressPath: string;
