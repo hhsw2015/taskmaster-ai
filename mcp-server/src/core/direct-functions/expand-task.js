@@ -100,7 +100,7 @@ export async function expandTaskDirect(args, log, context = {}) {
 
 		// Read tasks data
 		log.info(`[expandTaskDirect] Attempting to read JSON from: ${tasksPath}`);
-		const data = readJSON(tasksPath, projectRoot);
+		const data = readJSON(tasksPath, projectRoot, tag);
 		log.info(
 			`[expandTaskDirect] Result of readJSON: ${data ? 'Data read successfully' : 'readJSON returned null or undefined'}`
 		);
@@ -216,7 +216,7 @@ export async function expandTaskDirect(args, log, context = {}) {
 			if (!wasSilent && isSilentMode()) disableSilentMode();
 
 			// Read the updated data
-			const updatedData = readJSON(tasksPath, projectRoot);
+			const updatedData = readJSON(tasksPath, projectRoot, tag);
 			const updatedTask = updatedData.tasks.find((t) => t.id === taskId);
 
 			// Calculate how many subtasks were added
