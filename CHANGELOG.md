@@ -1,5 +1,126 @@
 # task-master-ai
 
+## 0.43.32
+
+### Patch Changes
+
+- [`5e1006f`](https://github.com/eyaltoledano/claude-task-master/commit/5e1006f1012c18b9276d87981eb1d17e11d75259) Thanks [@wowdd1](https://github.com/wowdd1)! - Fix cloud status writeback failures when Taskmaster uses non-native statuses like `blocked`, `review`, `deferred`, or `cancelled`.
+  - Map extended Taskmaster statuses to API-compatible values instead of throwing.
+  - Preserve original Taskmaster status in task metadata and restore it on read, so CLI still shows the intended status.
+  - Prevent `Failed to update task status via API` during longrun/auto execution flows.
+
+- [`04ff2a1`](https://github.com/eyaltoledano/claude-task-master/commit/04ff2a1c193484128ff80158274da5f816c4879f) Thanks [@wowdd1](https://github.com/wowdd1)! - Fix CLI version reporting to always use Task Master's runtime package version.
+
+  `task-master --version` no longer depends on `TM_PUBLIC_VERSION` build-time injection, preventing stale version output after publishing and global installs.
+
+- [`22cd9a3`](https://github.com/eyaltoledano/claude-task-master/commit/22cd9a39c1cc6f72e037b02804c32b1b7621f7c5) Thanks [@wowdd1](https://github.com/wowdd1)! - Add explicit Codex CLI support for `gpt-5.3-codex` with `xhigh` reasoning effort in provider validation logic and supported model metadata.
+
+  This prevents unnecessary fallback from `xhigh` to `high` when using GPT-5.3 Codex through Task Master's Codex provider path.
+
+- [`336bdbb`](https://github.com/eyaltoledano/claude-task-master/commit/336bdbb06383a8d56eeb16410b1d77d0e91746a7) Thanks [@wowdd1](https://github.com/wowdd1)! - Make Codex CLI the default local executor for generated Task Master configs.
+
+  Default configs now use non-interactive Codex execution (`approvalMode: never`, `fullAuto: true`, `sandboxMode: danger-full-access`, `skipGitRepoCheck: true`) with `reasoningEffort: xhigh`, and default response language is set to `Chinese`.
+
+  Also fixes `task-master lang --response ...` failing with `successMessage is not defined`.
+
+- [`43b57a7`](https://github.com/eyaltoledano/claude-task-master/commit/43b57a7fcd658a7587f66e2c82406c387ac85c99) Thanks [@wowdd1](https://github.com/wowdd1)! - Automatically inject project-level Taskmaster quick triggers into `AGENTS.md` during `task-master codex init`.
+  - Adds built-in shortcuts for Chinese commands:
+    - `拆分任务`: write PRD and run `task-master parse-prd`
+    - `开始实现`: run `task-master codex run` in foreground (uses active tag, not hardcoded `master`)
+  - Keeps longrun behavior unchanged while removing the need to repeat long prompt instructions each time.
+
+- [`8156b97`](https://github.com/eyaltoledano/claude-task-master/commit/8156b97e912919c5521c59015f49452f167e56de) Thanks [@wowdd1](https://github.com/wowdd1)! - Codex CLI execution now prefers the system `codex` binary by default when available in `PATH`.
+
+  If no global `codex` executable is found, Task Master falls back to the provider's existing bundled resolution behavior.
+
+  Explicit `codexPath` configuration is still respected and will override the default selection.
+
+- [`f95bf7e`](https://github.com/eyaltoledano/claude-task-master/commit/f95bf7e003846dcf71708c7ea7390036b9bb14c3) Thanks [@wowdd1](https://github.com/wowdd1)! - Add a Codex execution preflight check that runs before `start` and `loop` when using the Codex executor.
+
+  If the project is not trusted in `~/.codex/config.toml` or Codex approval policy is not set to unattended mode (`never`), Task Master now refuses execution and shows exact remediation guidance instead of hanging on interactive approvals.
+
+- [`43b57a7`](https://github.com/eyaltoledano/claude-task-master/commit/43b57a7fcd658a7587f66e2c82406c387ac85c99) Thanks [@wowdd1](https://github.com/wowdd1)! - Make `task-master codex run` show full task execution flow in terminal by default.
+  - Keep real-time executor output (`stdout`/`stderr`) enabled by default.
+  - Add `--no-show-executor-output` to explicitly disable live streaming when needed.
+  - Improve run visibility with extra `[info]`/`[warn]` lifecycle messages during longrun execution.
+
+- [`aa1d44b`](https://github.com/eyaltoledano/claude-task-master/commit/aa1d44bdfde116ecf1a38c34b356adf017a48473) Thanks [@wowdd1](https://github.com/wowdd1)! - Improve Codex longrun skill initialization by downloading and wiring upstream Taskmaster skill assets.
+  - Sync upstream skill asset files into `.codex/skills/taskmaster-longrun/assets/`:
+    - `SPEC_TEMPLATE.md`
+    - `PROGRESS_TEMPLATE.md`
+    - `todo_template.csv`
+  - Make `codex init` prefer these asset templates when creating runtime `SPEC.md` and `PROGRESS.md`.
+
+- [`2119779`](https://github.com/eyaltoledano/claude-task-master/commit/21197799623c29f8b35542e289985bd0732b2283) Thanks [@wowdd1](https://github.com/wowdd1)! - Improve Codex longrun stability with runner-controlled execution outcomes and timeout controls.
+  - Add machine-readable `TM_RESULT` parsing so runner can reliably decide task success/failure and write Taskmaster status.
+  - Add per-task timeout controls:
+    - `--exec-idle-timeout-ms` (default enabled)
+    - `--exec-hard-timeout-ms` (optional hard cap)
+    - `--exec-hard-timeout-ms 0` to disable hard timeout
+  - Keep backward compatibility for `--exec-timeout-ms` as an alias of hard timeout.
+
+- [`ebc0ef8`](https://github.com/eyaltoledano/claude-task-master/commit/ebc0ef8677aebe8eac61fa28396bea993d6426fb) Thanks [@wowdd1](https://github.com/wowdd1)! - Harden structured output schema normalization for Codex/OpenAI strict JSON schema validation.
+
+  Task Master now enforces that object schemas list every declared property in `required`, in addition to ensuring `additionalProperties: false`.
+
+  This fixes `parse-prd` failures with `codex-cli` + `gpt-5.3-codex` where providers rejected schemas with errors like:
+  - Missing `additionalProperties: false`
+  - `required` missing keys such as `metadata`
+
+- [`0eb921d`](https://github.com/eyaltoledano/claude-task-master/commit/0eb921deaef0c8c70e512002cf34e14bd2c6ad88) Thanks [@wowdd1](https://github.com/wowdd1)! - Fix `task-master expand` routing so local CLI providers (including `codex-cli`) do not delegate subtask expansion to Hamster.
+
+  When a local CLI provider is active, expansion now stays on the local execution path.
+
+- [`7604d11`](https://github.com/eyaltoledano/claude-task-master/commit/7604d110c225589219016fc5c4c90a80ac3934c9) Thanks [@wowdd1](https://github.com/wowdd1)! - Fix MCP `expand_task` in multi-tag projects so an explicit `tag` no longer falls back to the current active tag during task expansion.
+
+- [`8decae7`](https://github.com/eyaltoledano/claude-task-master/commit/8decae70c9ca34bb5f648d913da2b6a2cafc406c) Thanks [@wowdd1](https://github.com/wowdd1)! - Exported task descriptions now follow your configured response language. Chinese mode outputs Chinese section headings and fallback text, while English mode keeps the existing English wording.
+
+  When creating a Hamster brief from local tasks, Task Master now forwards the preferred language for generated brief metadata and automatically retries without that field if the backend enforces a strict schema.
+
+- [`8decae7`](https://github.com/eyaltoledano/claude-task-master/commit/8decae70c9ca34bb5f648d913da2b6a2cafc406c) Thanks [@wowdd1](https://github.com/wowdd1)! - Added first-class non-interactive export mode for automation/LLM use.
+  - `tm export` now supports `--yes` / `--non-interactive` to skip interactive prompts.
+  - Added `--invite-emails` for non-interactive collaborator invites.
+  - Added `--all-unexported` to export all local unexported tags without manual selection.
+  - When already connected to a brief, non-interactive export no longer blocks on confirmation.
+  - Auth/org guard now supports non-interactive behavior and fails fast with actionable errors instead of waiting for prompts.
+
+- [`fd57b07`](https://github.com/eyaltoledano/claude-task-master/commit/fd57b07b5243cd4e3cb9bab24ed2d5318488d259) Thanks [@wowdd1](https://github.com/wowdd1)! - Add MCP support for choosing PRD parsing destination via `parse_prd.destination`.
+
+  You can now explicitly route PRD parsing to local `tasks.json` (`local`) or Hamster cloud brief generation (`hamster`) in non-interactive MCP flows.
+
+- [`ebc3f11`](https://github.com/eyaltoledano/claude-task-master/commit/ebc3f11bf3122582517b418d87cbb2c32867c4dd) Thanks [@wowdd1](https://github.com/wowdd1)! - Ensure published npm packages are built at publish time by running `build` in `prepack`.
+
+  This prevents stale `dist` artifacts and keeps CLI-reported version output aligned with the published package version.
+
+- [`ebc3f11`](https://github.com/eyaltoledano/claude-task-master/commit/ebc3f11bf3122582517b418d87cbb2c32867c4dd) Thanks [@wowdd1](https://github.com/wowdd1)! - Make CLI version resolution runtime-safe by reading package metadata from the installed Task Master package instead of relying on build-baked constants.
+
+  This keeps `task-master --version` aligned with the installed package version even when stale build artifacts are present.
+
+- [`a9fa47a`](https://github.com/eyaltoledano/claude-task-master/commit/a9fa47a0c88b43ff6797aa536deb298d0bf65f77) Thanks [@wowdd1](https://github.com/wowdd1)! - Fix legacy `storage.type = "local"` compatibility so CLI commands no longer fail with `Unknown storage type: local`.
+  - Normalize legacy `local` storage type to `file` in runtime config resolution.
+  - Add defensive normalization in storage factory creation/validation paths.
+  - Add regression tests to prevent initialization failures in older project configs.
+
+- [`7702148`](https://github.com/eyaltoledano/claude-task-master/commit/7702148014f97db3921c8df3768e9b0be7f4f8ee) Thanks [@wowdd1](https://github.com/wowdd1)! - Fix Hamster authentication bootstrap by adding built-in Supabase fallback defaults for the official hosted environment.
+
+  This prevents `tm auth login` from failing with missing Supabase env errors in self-built or custom-published packages when Supabase variables are not explicitly provided.
+
+- [`7399e98`](https://github.com/eyaltoledano/claude-task-master/commit/7399e98cc0e8f583b7b7e3a5175183395d6d9c78) Thanks [@wowdd1](https://github.com/wowdd1)! - Fixed `sync push` for large task sets by batching task import requests to Hamster.
+  - Automatically splits bulk sync payloads into batches of up to 100 tasks
+  - Prevents API validation failures for projects with more than 100 tasks/subtasks
+  - Preserves existing sync behavior while improving reliability for larger plans
+
+- [`e084b1a`](https://github.com/eyaltoledano/claude-task-master/commit/e084b1ac110714710d9eb6936ef961b0dc858a1c) Thanks [@wowdd1](https://github.com/wowdd1)! - Added a native `sync push` command to push local tasks into an existing Hamster brief (without creating a new brief).
+  - New command: `task-master sync push`
+  - Supports explicit brief targeting via `--brief <brief-id-or-url>`
+  - Supports local tag selection via `--tag <tag>`
+  - Supports non-interactive automation via `--yes` / `--non-interactive`
+  - Fails fast in non-interactive mode when no brief context is available
+
+- [`ff6a908`](https://github.com/eyaltoledano/claude-task-master/commit/ff6a9089b9821ab5cc40c6795e3c12692909888d) Thanks [@wowdd1](https://github.com/wowdd1)! - Add `tm sync push --mode replace` to support overwrite-style sync into an existing Hamster brief.
+
+  When `--mode replace` is used, Task Master now clears existing tasks in the target brief before importing local tasks, preventing duplicate historical entries from repeated sync runs.
+
 ## 0.43.0
 
 ### Minor Changes
