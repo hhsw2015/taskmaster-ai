@@ -582,6 +582,25 @@ describe('getConfig Tests', () => {
 		);
 	});
 
+	test('should suppress missing-config warnings in MCP mode', () => {
+		const originalTaskMasterMcp = process.env.TASK_MASTER_MCP;
+		process.env.TASK_MASTER_MCP = 'true';
+		try {
+			fsExistsSyncSpy.mockReturnValue(false);
+
+			const config = configManager.getConfig(MOCK_PROJECT_ROOT, true);
+
+			expect(config).toEqual(DEFAULT_CONFIG);
+			expect(consoleWarnSpy).not.toHaveBeenCalled();
+		} finally {
+			if (originalTaskMasterMcp === undefined) {
+				delete process.env.TASK_MASTER_MCP;
+			} else {
+				process.env.TASK_MASTER_MCP = originalTaskMasterMcp;
+			}
+		}
+	});
+
 	test.skip('should use findProjectRoot and return defaults if file not found', () => {
 		// TODO: Fix mock interaction, findProjectRoot isn't being registered as called
 		// Arrange

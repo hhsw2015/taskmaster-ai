@@ -92,7 +92,10 @@ export function setSuppressConfigWarnings(suppress) {
  * @returns {boolean}
  */
 export function isConfigWarningSuppressed() {
-	return global._tmSuppressConfigWarnings === true;
+	return (
+		global._tmSuppressConfigWarnings === true ||
+		process.env.TASK_MASTER_MCP === 'true'
+	);
 }
 
 // Custom Error for configuration issues
